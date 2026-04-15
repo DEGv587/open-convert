@@ -1,12 +1,17 @@
 FROM debian:bullseye-slim
 
+# 构建参数：USE_MIRROR=true 使用阿里云镜像（本地开发），false 使用官方源（生产环境）
+ARG USE_MIRROR=false
+
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# 换阿里云 apt 源加速
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
-    sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
+# 条件性配置镜像源
+RUN if [ "$USE_MIRROR" = "true" ]; then \
+        sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
+        sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list; \
+    fi
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
@@ -33,7 +38,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
+
+# 条件性使用 pip 镜像源
+RUN if [ "$USE_MIRROR" = "true" ]; then \
+        pip3 install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt; \
+    else \
+        pip3 install --no-cache-dir -r requirements.txt; \
+    fi
 
 COPY . .
 
