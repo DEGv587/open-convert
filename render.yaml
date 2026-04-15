@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: open-convert-backend
+    env: docker
+    dockerfilePath: ./doc-convert/backend/Dockerfile
+    dockerContext: ./doc-convert/backend
+    plan: free
+    region: oregon
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: https://convert.ljhztq.com,http://localhost:5173
+      - key: MAX_FILE_SIZE_MB
+        value: 50
+      - key: MAX_MULTI_FILES
+        value: 50
+      - key: JOB_TTL_HOURS
+        value: 1
+    healthCheckPath: /doc-convert/api/health

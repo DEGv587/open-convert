@@ -1,0 +1,109 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'doc-convert/**'
+      - '.github/workflows/**'
+
+jobs:
+  # 检测变更
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'doc-convert/backend/**'
+            frontend:
+              - 'doc-convert/frontend/**'
+
+  # 后端部署到 Render
+  deploy-backend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger Render Deploy
+        run: |
+          echo "后端代码已变更，Render 会自动检测并部署"
+          echo "部署 URL: https://dashboard.render.com/"
+
+      - name: Wait for deployment
+        run: |
+          echo "等待 Render 部署完成..."
+          sleep 30
+
+      - name: Health Check
+        run: |
+          max_attempts=10
+          attempt=0
+          while [ $attempt -lt $max_attempts ]; do
+            if curl -f -s "${{ secrets.RENDER_BACKEND_URL }}/doc-convert/api/health" > /dev/null; then
+              echo "✅ 后端健康检查通过"
+              exit 0
+            fi
+            attempt=$((attempt + 1))
+            echo "尝试 $attempt/$max_attempts 失败，等待 10 秒..."
+            sleep 10
+          done
+          echo "❌ 后端健康检查失败"
+          exit 1
+
+  # 前端部署到 Cloudflare Pages
+  deploy-frontend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: doc-convert/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: doc-convert/frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: doc-convert/frontend
+        env:
+          VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy doc-convert/frontend/dist --project-name=open-convert
+
+  # 部署通知
+  notify:
+    needs: [deploy-backend, deploy-frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "## 部署结果" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 后端: ${{ needs.deploy-backend.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 前端: ${{ needs.deploy-frontend.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "访问地址: https://convert.ljhztq.com" >> $GITHUB_STEP_SUMMARY
