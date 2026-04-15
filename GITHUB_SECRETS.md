@@ -4,7 +4,7 @@
 
 ## 配置步骤
 
-1. 访问 GitHub 仓库：https://github.com/DEGv587/open-convert
+1. 访问你的 GitHub 仓库
 2. 进入 **Settings** → **Secrets and variables** → **Actions**
 3. 点击 **New repository secret** 添加以下密钥
 
@@ -14,7 +14,7 @@
 
 ### 1. RENDER_BACKEND_URL
 - **说明**: Render 后端服务的 URL
-- **示例**: `https://open-convert-backend.onrender.com`
+- **示例**: `https://your-service-name.onrender.com`
 - **获取方式**: 
   1. 在 Render Dashboard 部署后端服务
   2. 复制服务的 URL
@@ -39,7 +39,7 @@
 
 ### 4. VITE_API_BASE
 - **说明**: 前端 API 基础路径
-- **示例**: `https://open-convert-backend.onrender.com/doc-convert/api`
+- **示例**: `https://your-backend-url.onrender.com/doc-convert/api`
 - **格式**: `{RENDER_BACKEND_URL}/doc-convert/api`
 
 ---
@@ -47,10 +47,10 @@
 ## 配置示例
 
 ```
-RENDER_BACKEND_URL=https://open-convert-backend.onrender.com
+RENDER_BACKEND_URL=https://your-service-name.onrender.com
 CLOUDFLARE_API_TOKEN=your_cloudflare_api_token_here
 CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id_here
-VITE_API_BASE=https://open-convert-backend.onrender.com/doc-convert/api
+VITE_API_BASE=https://your-backend-url.onrender.com/doc-convert/api
 ```
 
 ---
@@ -66,7 +66,7 @@ git push origin main
 ```
 
 然后访问 GitHub Actions 页面查看部署状态：
-https://github.com/DEGv587/open-convert/actions
+`https://github.com/YOUR_USERNAME/YOUR_REPO/actions`
 
 ---
 

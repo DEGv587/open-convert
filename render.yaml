@@ -8,7 +8,7 @@ services:
     region: oregon
     envVars:
       - key: ALLOWED_ORIGINS
-        value: https://convert.ljhztq.com,http://localhost:5173
+        value: https://your-frontend-domain.com,http://localhost:5173
       - key: MAX_FILE_SIZE_MB
         value: 50
       - key: MAX_MULTI_FILES

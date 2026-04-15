@@ -6,7 +6,7 @@
 
 1. 访问 [Render Dashboard](https://dashboard.render.com/)
 2. 点击 **New +** → **Web Service**
-3. 连接 GitHub 仓库 `DEGv587/open-convert`
+3. 连接 GitHub 仓库
 4. 配置如下：
    - **Name**: `open-convert-backend`
    - **Region**: Oregon (US West)
@@ -19,7 +19,7 @@
 
 5. 添加环境变量：
    ```
-   ALLOWED_ORIGINS=https://convert.ljhztq.com,http://localhost:5173
+   ALLOWED_ORIGINS=https://your-domain.com,http://localhost:5173
    MAX_FILE_SIZE_MB=50
    MAX_MULTI_FILES=50
    JOB_TTL_HOURS=1
@@ -29,21 +29,22 @@
 
 ### 方式二：使用 render.yaml（自动部署）
 
-1. 确保 `render.yaml` 已提交到仓库根目录
-2. 在 Render Dashboard 中点击 **New +** → **Blueprint**
-3. 选择仓库 `DEGv587/open-convert`
-4. Render 会自动读取 `render.yaml` 并创建服务
+1. 修改 `render.yaml` 中的 `ALLOWED_ORIGINS` 为你的域名
+2. 确保 `render.yaml` 已提交到仓库根目录
+3. 在 Render Dashboard 中点击 **New +** → **Blueprint**
+4. 选择你的 GitHub 仓库
+5. Render 会自动读取 `render.yaml` 并创建服务
 
 ### 部署后
 
 部署完成后，你会得到一个 URL，类似：
 ```
-https://open-convert-backend.onrender.com
+https://your-service-name.onrender.com
 ```
 
 测试健康检查：
 ```bash
-curl https://open-convert-backend.onrender.com/doc-convert/api/health
+curl https://your-service-name.onrender.com/doc-convert/api/health
 ```
 
 ---
@@ -65,7 +66,7 @@ curl https://open-convert-backend.onrender.com/doc-convert/api/health
 
 1. 访问 [Cloudflare Dashboard](https://dash.cloudflare.com/)
 2. 进入 **Workers & Pages** → **Create application** → **Pages**
-3. 连接 GitHub 仓库 `DEGv587/open-convert`
+3. 连接你的 GitHub 仓库
 4. 配置如下：
    - **Project name**: `open-convert`
    - **Production branch**: `main`
@@ -75,15 +76,15 @@ curl https://open-convert-backend.onrender.com/doc-convert/api/health
 
 5. 添加环境变量：
    ```
-   VITE_API_BASE=https://open-convert-backend.onrender.com/doc-convert/api
+   VITE_API_BASE=https://your-backend-url.onrender.com/doc-convert/api
    ```
 
 6. 点击 **Save and Deploy**
 
-### 3. 配置自定义域名
+### 3. 配置自定义域名（可选）
 
 1. 在 Cloudflare Pages 项目设置中，进入 **Custom domains**
-2. 添加域名 `convert.ljhztq.com`
+2. 添加你的域名
 3. 按照提示配置 DNS 记录（CNAME 指向 Cloudflare Pages）
 
 ---
@@ -106,7 +107,7 @@ curl https://open-convert-backend.onrender.com/doc-convert/api/health
 
 ### GitHub Actions 配置
 
-创建 `.github/workflows/deploy.yml`（见下一步）
+参考 `.github/workflows/deploy.yml` 和 `GITHUB_SECRETS.md`
 
 ### 触发条件
 
@@ -126,12 +127,12 @@ curl https://open-convert-backend.onrender.com/doc-convert/api/health
 
 ### 后端验证
 ```bash
-curl https://open-convert-backend.onrender.com/doc-convert/api/health
-curl https://open-convert-backend.onrender.com/doc-convert/api/config
+curl https://your-backend-url.onrender.com/doc-convert/api/health
+curl https://your-backend-url.onrender.com/doc-convert/api/config
 ```
 
 ### 前端验证
-访问 `https://convert.ljhztq.com`，测试文件上传和转换功能
+访问你的前端域名，测试文件上传和转换功能
 
 ---
 
