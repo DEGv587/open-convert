@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenConvert - 专业文档转换工具</title>
+  <link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+
+  <header>
+    <h1>OpenConvert</h1>
+    <p>专业、安全、极简的文档转换工具</p>
+  </header>
+
+  <main id="app">
+    <!-- 1. 上传区 -->
+    <section id="state-upload" class="state-section active">
+      <div id="drop-zone">
+        <div class="upload-content">
+          <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+          </svg>
+          <p class="main-text">拖拽文件至此处</p>
+          <p class="sub-text">或点击选择文件</p>
+          <p class="hint-text">支持 PDF, Word, PPT, JPG, PNG, HEIC（单文件最大 50MB，图片合并 PDF 最多 50 张）</p>
+        </div>
+      </div>
+      <input type="file" id="file-input" accept=".pdf,.docx,.doc,.pptx,.ppt,.jpg,.jpeg,.png,.heic" multiple>
+    </section>
+
+    <!-- 2. 多图上传区（Image → PDF 专用） -->
+    <section id="state-multi-upload" class="state-section">
+      <div id="multi-drop-zone">
+        <div class="upload-content small">
+          <p class="sub-text">继续拖入更多图片（最多 50 张）</p>
+        </div>
+      </div>
+      <div id="thumbnail-list"></div>
+      <div class="format-selector">
+        <span class="format-label">转换为</span>
+        <div class="format-group">
+          <button class="format-btn selected" data-fmt="pdf">PDF</button>
+        </div>
+      </div>
+      <button class="main-btn" id="multi-convert-btn">
+        开始转换
+      </button>
+      <button class="secondary-btn" id="multi-reset-btn">重新选择</button>
+    </section>
+
+    <!-- 3. 单文件选中 + 格式选择 -->
+    <section id="state-config" class="state-section">
+      <div class="file-info-card">
+        <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+        </svg>
+        <div class="file-details">
+          <span class="file-name" id="display-file-name"></span>
+          <span class="file-size" id="display-file-size"></span>
+        </div>
+        <button class="remove-file" id="remove-file-btn" title="移除文件">&#x2715;</button>
+      </div>
+
+      <div class="format-selector">
+        <span class="format-label">转换为</span>
+        <div class="format-group" id="format-options"></div>
+      </div>
+
+      <button class="main-btn" id="start-convert-btn" disabled>
+        开始转换
+      </button>
+    </section>
+
+    <!-- 4. 处理中 -->
+    <section id="state-processing" class="state-section">
+      <p id="process-text" class="process-text">正在上传...</p>
+      <div class="progress-container">
+        <div class="progress-bar-bg">
+          <div id="progress-fill" class="progress-bar-fill"></div>
+        </div>
+        <span id="progress-pct" class="progress-pct">0%</span>
+      </div>
+      <p id="stage-text" class="hint-text"></p>
+      <p class="hint-text muted">首次使用可能需要 30-60 秒启动服务，请耐心等待</p>
+    </section>
+
+    <!-- 5. 成功 -->
+    <section id="state-success" class="state-section">
+      <svg class="status-icon success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <h2>转换完成！</h2>
+      <button class="main-btn" id="download-btn">
+        下载文件
+      </button>
+      <button class="secondary-btn" id="success-reset-btn">转换新文件</button>
+    </section>
+
+    <!-- 6. 失败 -->
+    <section id="state-error" class="state-section">
+      <svg class="status-icon error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+      </svg>
+      <h2>转换失败</h2>
+      <p id="error-message" class="error-detail"></p>
+      <div class="btn-row">
+        <button class="main-btn" id="retry-btn">重试</button>
+        <button class="main-btn secondary-main-btn" id="error-reset-btn">转换新文件</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>支持格式：PDF · DOCX · PPTX · JPG · PNG · HEIC &nbsp;|&nbsp; 最大 50MB</p>
+    <p>文件仅用于转换，不在服务器长期存储，1 小时后自动删除。</p>
+  </footer>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ALLOWED_ORIGINS=http://localhost:5173
+      - MAX_FILE_SIZE_MB=50
+      - JOB_TTL_HOURS=1
+    volumes:
+      - /tmp/docconv:/tmp/docconv
