@@ -17,6 +17,8 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史，确保能正确检测变更
 
       - uses: dorny/paths-filter@v3
         id: filter
