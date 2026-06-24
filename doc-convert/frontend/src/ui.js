@@ -5,7 +5,7 @@ import { getFileExt } from './utils/file.js'
  * 默认配置，会在初始化时从后端获取
  */
 let CONVERSION_MAP = {
-  pdf:  ['docx', 'pptx', 'png', 'jpg'],
+  pdf:  ['pdf', 'docx', 'pptx', 'png', 'jpg'],  // 添加 pdf 作为第一个选项
   docx: ['pdf', 'pptx', 'png', 'jpg'],
   doc:  ['pdf', 'pptx', 'png', 'jpg'],
   pptx: ['pdf', 'docx', 'png', 'jpg'],
@@ -24,6 +24,8 @@ let FORMAT_LABELS = {
 let _state = 'upload' // upload | config | multi-upload | processing | success | error
 let _currentJobId = null
 let _stopPolling = null
+let _currentFileExt = null  // 记录当前文件扩展名
+let _currentToFormat = null  // 记录当前选择的目标格式
 
 const sections = {}
 const $ = id => document.getElementById(id)
@@ -69,11 +71,15 @@ export function renderConfig(file, onFormatSelect) {
   $('display-file-size').textContent = formatBytes(file.size)
 
   const ext = getFileExt(file.name)
+  _currentFileExt = ext
+  _currentToFormat = null
   const targets = CONVERSION_MAP[ext] || ['pdf']
 
   const group = $('format-options')
   group.innerHTML = ''
-  let selected = null
+
+  // 重置翻译选项
+  _resetTranslateSelector()
 
   for (const fmt of targets) {
     const btn = document.createElement('button')
@@ -83,13 +89,102 @@ export function renderConfig(file, onFormatSelect) {
     btn.onclick = () => {
       group.querySelectorAll('.format-btn').forEach(b => b.classList.remove('selected'))
       btn.classList.add('selected')
-      selected = fmt
+      _currentToFormat = fmt
       $('start-convert-btn').disabled = false
       onFormatSelect(fmt)
+
+      // 仅 PDF → PDF 显示翻译选项
+      const showTranslate = ext === 'pdf' && fmt === 'pdf'
+      $('translate-selector').style.display = showTranslate ? 'flex' : 'none'
+      if (!showTranslate) _resetTranslateSelector()
     }
     group.appendChild(btn)
   }
+
+  // PDF 文件默认选中 PDF 格式
+  if (ext === 'pdf' && targets.includes('pdf')) {
+    const pdfBtn = group.querySelector('[data-fmt="pdf"]')
+    if (pdfBtn) {
+      pdfBtn.click()
+      // 已经选中，不需要再禁用按钮
+      return
+    }
+  }
+
   $('start-convert-btn').disabled = true
+}
+
+function _resetTranslateSelector() {
+  const group = $('translate-options')
+  if (!group) return
+
+  const buttons = group.querySelectorAll('.format-btn')
+
+  // 默认选中"不翻译"
+  buttons.forEach(b => b.classList.remove('selected'))
+  const noTranslateBtn = group.querySelector('[data-lang=""]')
+  if (noTranslateBtn) noTranslateBtn.classList.add('selected')
+
+  // 绑定翻译按钮单选
+  buttons.forEach(btn => {
+    btn.onclick = () => {
+      buttons.forEach(b => b.classList.remove('selected'))
+      btn.classList.add('selected')
+
+      // 选择翻译语言时显示页码范围
+      const lang = btn.dataset.lang
+      const showPageRange = lang !== ''
+      $('page-range-selector').style.display = showPageRange ? 'flex' : 'none'
+    }
+  })
+}
+
+/** 获取当前选中的翻译目标语言，null 表示不翻译 */
+export function getSelectedTranslateLang() {
+  const group = $('translate-options')
+  if (!group) return null
+  const selected = group.querySelector('.format-btn.selected')
+  const lang = selected?.dataset.lang || ''
+  return lang || null
+}
+
+/** 获取页码范围，null 表示不限制范围 */
+export function getPageRange() {
+  if ($('page-range-selector').style.display === 'none') {
+    return null
+  }
+  const startInput = $('page-range-start')
+  const endInput = $('page-range-end')
+  if (!startInput || !endInput) {
+    return null
+  }
+  let start = parseInt(startInput.value.trim())
+  let end = parseInt(endInput.value.trim())
+  if (isNaN(start) || isNaN(end)) {
+    return null
+  }
+  // 自动调整：如果起始页 > 结束页，交换
+  if (start > end) {
+    [start, end] = [end, start]
+  }
+  return `${start}-${end}`
+}
+
+/** 设置 PDF 总页数并更新提示 */
+export function setPdfTotalPages(totalPages) {
+  const hint = $('page-range-hint')
+  const startInput = $('page-range-start')
+  const endInput = $('page-range-end')
+  if (hint) {
+    hint.textContent = `共 ${totalPages} 页`
+  }
+  if (startInput && endInput) {
+    // 设置默认值
+    startInput.value = '1'
+    endInput.value = Math.min(10, totalPages).toString()
+    startInput.max = totalPages
+    endInput.max = totalPages
+  }
 }
 
 /**
@@ -124,8 +219,18 @@ export function setStageText(text) {
   $('stage-text').textContent = text || ''
 }
 
-export function enterSuccess(jobId) {
+export function enterSuccess(jobId, warningMessage = null) {
   _currentJobId = jobId
+
+  // 显示或隐藏警告信息
+  const warningEl = $('success-warning')
+  if (warningMessage) {
+    warningEl.textContent = warningMessage
+    warningEl.style.display = 'block'
+  } else {
+    warningEl.style.display = 'none'
+  }
+
   switchState('success')
 }
 

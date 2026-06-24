@@ -9,7 +9,7 @@ const blobUrls = new Set()
 
 const LONG_PRESS_MS = 260
 const TOUCH_SLOP_PX = 8
-export const MAX_MULTI_FILES = 50
+export const MAX_MULTI_FILES = 500
 
 export function initMultiUploader(onChange) {
   _onChange = onChange

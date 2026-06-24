@@ -8,10 +8,12 @@ const API_BASE = import.meta.env.VITE_API_BASE || '/doc-convert/api'
  * @param {function} onUploadProgress - (pct: number) => void
  * @returns {Promise<{job_id: string}>}
  */
-export function submitConversion(files, toFormat, fileOrder, onUploadProgress) {
+export function submitConversion(files, toFormat, fileOrder, onUploadProgress, translateTo = null, pageRange = null) {
   return new Promise((resolve, reject) => {
     const fd = new FormData()
     fd.append('to_format', toFormat)
+    if (translateTo) fd.append('translate_to', translateTo)
+    if (pageRange) fd.append('translate_page_range', pageRange)
 
     if (files.length === 1 && !fileOrder) {
       fd.append('file', files[0])
@@ -107,5 +109,29 @@ export async function warmup() {
     await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(10000) })
   } catch {
     // 忽略预热失败
+  }
+}
+
+/**
+ * 获取 PDF 文件信息（页数等）
+ */
+export async function getPdfInfo(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+
+  try {
+    const response = await fetch(`${API_BASE}/pdf-info`, {
+      method: 'POST',
+      body: fd
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to get PDF info')
+    }
+
+    return await response.json()
+  } catch (error) {
+    console.error('Get PDF info failed:', error)
+    return null
   }
 }

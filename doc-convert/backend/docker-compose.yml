@@ -9,6 +9,8 @@ services:
         USE_MIRROR: "true"  # 本地开发使用阿里云镜像加速
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - ALLOWED_ORIGINS=http://localhost:5173
       - MAX_FILE_SIZE_MB=50

@@ -33,8 +33,8 @@ export function initUploader(onFile, onFiles) {
 async function handleFiles(files) {
   // 检查文件大小
   for (const file of files) {
-    if (file.size > 50 * 1024 * 1024) {
-      alert(`文件 ${file.name} 大小超过 50MB 限制`)
+    if (file.size > 300 * 1024 * 1024) {
+      alert(`文件 ${file.name} 大小超过 300MB 限制`)
       return
     }
   }

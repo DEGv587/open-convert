@@ -1,13 +1,14 @@
 /**
  * 应用入口：协调各模块
  */
-import { warmup, submitConversion, pollStatus, downloadResult } from './converter.js'
+import { warmup, submitConversion, pollStatus, downloadResult, getPdfInfo } from './converter.js'
 import { initUploader } from './uploader.js'
 import { initMultiUploader, getFileList, getFileOrder, resetMulti, addFiles } from './multi-uploader.js'
 import {
   initUI, switchState, renderConfig, getCurrentState,
   enterProcessing, setProcessText, setProgress, setStageText,
   enterSuccess, enterError, getCurrentJobId, setStopPolling, stopPolling,
+  getSelectedTranslateLang, getPageRange, setPdfTotalPages,
 } from './ui.js'
 import { isImageFile } from './utils/file.js'
 
@@ -26,6 +27,14 @@ initUploader(
   async (file) => {
     selectedFile = file
     selectedFormat = null
+
+    // 如果是 PDF，获取页数
+    if (file.name.toLowerCase().endsWith('.pdf')) {
+      const info = await getPdfInfo(file)
+      if (info && info.total_pages) {
+        setPdfTotalPages(info.total_pages)
+      }
+    }
 
     // 如果是图片，进入多图模式
     if (isImageFile(file)) {
@@ -111,14 +120,14 @@ initMultiUploader((files) => {
 
 // --- 核心逻辑 ---
 
-async function startConversion(files, toFormat, fileOrder = null, processingText = '正在转换...') {
+async function startConversion(files, toFormat, fileOrder = null, processingText = '正在转换...', translateTo = null, pageRange = null) {
   enterProcessing('正在上传...')
 
   try {
     const { job_id } = await submitConversion(files, toFormat, fileOrder, (pct) => {
       setProgress(Math.round(pct * 0.4))
       setProcessText(`正在上传... ${Math.round(pct * 0.4)}%`)
-    })
+    }, translateTo, pageRange)
 
     setProcessText(processingText)
     setProgress(40)
@@ -130,9 +139,16 @@ async function startConversion(files, toFormat, fileOrder = null, processingText
         setProgress(total)
         setStageText(data.stage || '')
       },
-      onDone: () => {
+      onDone: (data) => {
         stop && stop()
-        enterSuccess(job_id)
+
+        // 检测部分成功的警告（限额用完）
+        let warningMsg = null
+        if (data.stage && /限额|部分翻译|API 限额已用完/.test(data.stage)) {
+          warningMsg = '⚠️ ' + data.stage
+        }
+
+        enterSuccess(job_id, warningMsg)
       },
       onError: (err) => {
         stop && stop()
@@ -146,7 +162,10 @@ async function startConversion(files, toFormat, fileOrder = null, processingText
 }
 
 async function startSingleConversion(file, toFormat) {
-  await startConversion([file], toFormat, null, '正在转换...')
+  const translateTo = getSelectedTranslateLang()
+  const pageRange = getPageRange()
+  const label = translateTo ? '正在转换并翻译...' : '正在转换...'
+  await startConversion([file], toFormat, null, label, translateTo, pageRange)
 }
 
 async function startMultiConversion(files, toFormat) {

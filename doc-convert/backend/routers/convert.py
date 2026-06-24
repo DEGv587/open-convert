@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import uuid
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -46,7 +46,16 @@ def _extract_uploads(form: FormData) -> tuple[Optional[UploadFile], list[UploadF
     return single_file, multi_files
 
 
-async def _run_conversion(job_id: str, input_paths: list[str], from_fmt: str, to_fmt: str):
+async def _run_conversion(
+    job_id: str,
+    input_paths: list[str],
+    from_fmt: str,
+    to_fmt: str,
+    converter: Callable,
+    translate_to: Optional[str] = None,
+    start_page: Optional[int] = None,
+    end_page: Optional[int] = None
+):
     if not _semaphore._value:
         update_job(job_id, status="error", error="Server busy. Max 5 concurrent conversions.")
         return
@@ -54,7 +63,6 @@ async def _run_conversion(job_id: str, input_paths: list[str], from_fmt: str, to
     async with _semaphore:
         update_job(job_id, status="processing", progress=0)
         try:
-            converter = get_converter(from_fmt, to_fmt)
             work_dir = temp_dir(job_id)
 
             # HEIC 后端兜底：转换为 JPEG
@@ -70,17 +78,41 @@ async def _run_conversion(job_id: str, input_paths: list[str], from_fmt: str, to
                 out_ext = "zip"
             else:
                 out_ext = to_fmt
-            output_path = os.path.join(work_dir, f"{out_filename_base}_converted.{out_ext}")
+
+            # 翻译模式下文件名添加后缀
+            if translate_to:
+                # 如果指定了页码范围，添加页码后缀
+                if start_page is not None or end_page is not None:
+                    page_suffix = f"_p{(start_page or 0) + 1}-{(end_page or 0) + 1}"
+                    output_path = os.path.join(work_dir, f"{out_filename_base}_translated_{translate_to}{page_suffix}.{out_ext}")
+                else:
+                    output_path = os.path.join(work_dir, f"{out_filename_base}_translated_{translate_to}.{out_ext}")
+            else:
+                output_path = os.path.join(work_dir, f"{out_filename_base}_converted.{out_ext}")
 
             def progress_cb(pct: int, stage: str = ""):
                 update_job(job_id, progress=pct, stage=stage)
 
             loop = asyncio.get_event_loop()
             if len(normalized_paths) == 1:
-                await loop.run_in_executor(
-                    None,
-                    lambda: converter(normalized_paths[0], output_path, progress_cb),
-                )
+                # 翻译模式：传递额外参数
+                if translate_to:
+                    await loop.run_in_executor(
+                        None,
+                        lambda: converter(
+                            normalized_paths[0],
+                            output_path,
+                            progress_cb,
+                            target_lang=translate_to,
+                            start_page=start_page,
+                            end_page=end_page
+                        ),
+                    )
+                else:
+                    await loop.run_in_executor(
+                        None,
+                        lambda: converter(normalized_paths[0], output_path, progress_cb),
+                    )
             else:
                 await loop.run_in_executor(
                     None,
@@ -103,6 +135,8 @@ async def convert(
 
     form = await request.form()
     to_format = str(form.get("to_format") or "").strip()
+    translate_to = str(form.get("translate_to") or "").strip() or None  # 'zh' | 'en' | None
+    translate_page_range = str(form.get("translate_page_range") or "").strip() or None  # "1-10" | None
     file_order = form.get("file_order")
     file, files = _extract_uploads(form)
 
@@ -110,6 +144,23 @@ async def convert(
         raise HTTPException(400, "to_format is required")
     if file_order is not None and not isinstance(file_order, str):
         raise HTTPException(400, "file_order must be a string")
+    if translate_to and translate_to not in ("zh", "en"):
+        raise HTTPException(400, "translate_to must be 'zh' or 'en'")
+
+    # 解析页码范围
+    start_page, end_page = None, None
+    if translate_page_range:
+        try:
+            parts = translate_page_range.split('-')
+            if len(parts) == 2:
+                start_page = int(parts[0]) - 1  # 转为 0 索引
+                end_page = int(parts[1]) - 1
+                if start_page < 0 or end_page < start_page:
+                    raise ValueError()
+            else:
+                raise ValueError()
+        except (ValueError, IndexError):
+            raise HTTPException(400, "translate_page_range must be in format 'start-end' (e.g., '1-10')")
 
     to_fmt = to_format.lower().strip(".")
 
@@ -119,10 +170,14 @@ async def convert(
             raise HTTPException(400, f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB.")
         from_fmt = normalize_format(_get_ext(file.filename))
 
+        # 翻译仅支持 PDF → PDF 或 PDF → Word
+        if translate_to and (from_fmt != "pdf" or to_fmt not in ["pdf", "docx"]):
+            raise HTTPException(400, "Translation is only supported for PDF to PDF or PDF to Word conversion")
+
         if not is_conversion_supported(from_fmt, to_fmt):
             raise HTTPException(400, f"Unsupported conversion: {from_fmt} -> {to_fmt} is not available")
 
-        converter = get_converter(from_fmt, to_fmt)
+        converter = get_converter(from_fmt, to_fmt, translate_to=translate_to)
         if converter is None:
             raise HTTPException(400, f"Unsupported conversion: {from_fmt} -> {to_fmt} is not available")
 
@@ -134,7 +189,10 @@ async def convert(
         with open(save_path, "wb") as f:
             f.write(content)
 
-        background_tasks.add_task(_run_conversion, job_id, [save_path], from_fmt, to_fmt)
+        background_tasks.add_task(
+            _run_conversion, job_id, [save_path], from_fmt, to_fmt, converter,
+            translate_to, start_page, end_page
+        )
         return {"job_id": job_id, "status": "pending", "from_format": from_fmt, "to_format": to_fmt}
 
     # 多文件模式（Image → PDF）
@@ -179,10 +237,60 @@ async def convert(
             saved[f.filename] = save_path
 
         ordered_paths = [saved[name] for name in order]
-        background_tasks.add_task(_run_conversion, job_id, ordered_paths, "image", to_fmt)
+
+        # 多文件模式需要先获取 converter
+        multi_converter = get_converter("image", to_fmt)
+        if multi_converter is None:
+            raise HTTPException(400, f"Unsupported conversion: image -> {to_fmt}")
+
+        background_tasks.add_task(
+            _run_conversion, job_id, ordered_paths, "image", to_fmt, multi_converter,
+            None, None, None  # translate_to, start_page, end_page 不适用多文件
+        )
         return {"job_id": job_id, "status": "pending", "from_format": "image", "to_format": to_fmt}
 
     raise HTTPException(400, "No file uploaded")
+
+
+@router.post("/pdf-info")
+async def pdf_info(request: Request):
+    """获取 PDF 文件信息（页数等）"""
+    import fitz
+
+    form = await request.form()
+    file = form.get("file")
+
+    if not isinstance(file, UploadFile):
+        raise HTTPException(400, "No PDF file uploaded")
+
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(400, "Only PDF files are supported")
+
+    # 读取文件到临时位置
+    content = await file.read()
+    job_id = str(uuid.uuid4())
+    work_dir = temp_dir(job_id)
+    temp_path = os.path.join(work_dir, "temp.pdf")
+
+    try:
+        with open(temp_path, "wb") as f:
+            f.write(content)
+
+        # 打开 PDF 获取页数
+        doc = fitz.open(temp_path)
+        total_pages = len(doc)
+        doc.close()
+
+        return {
+            "total_pages": total_pages,
+            "filename": file.filename
+        }
+    finally:
+        # 清理临时文件
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        if os.path.exists(work_dir) and not os.listdir(work_dir):
+            os.rmdir(work_dir)
 
 
 @router.get("/status/{job_id}")

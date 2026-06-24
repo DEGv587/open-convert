@@ -26,7 +26,7 @@ FORMAT_LABELS = {
 
 # 转换矩阵：from_format -> [to_format, ...]
 CONVERSION_MATRIX = {
-    "pdf": ["docx", "pptx", "png", "jpg"],
+    "pdf": ["pdf", "docx", "pptx", "png", "jpg"],  # 添加 pdf 作为第一个选项
     "docx": ["pdf", "pptx", "png", "jpg"],
     "pptx": ["pdf", "docx", "png", "jpg"],
     "jpg": ["pdf", "docx"],
@@ -50,4 +50,9 @@ def is_conversion_supported(from_fmt: str, to_fmt: str) -> bool:
     """检查是否支持指定的转换"""
     from_normalized = normalize_format(from_fmt)
     to_normalized = normalize_format(to_fmt)
+
+    # 允许 PDF → PDF（带翻译）
+    if from_normalized == "pdf" and to_normalized == "pdf":
+        return True
+
     return to_normalized in CONVERSION_MATRIX.get(from_normalized, [])
