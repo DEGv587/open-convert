@@ -180,3 +180,4 @@ function reset() {
   resetMulti()
   switchState('upload')
 }
+// 触发前端部署 - Wed Jun 24 18:12:47 CST 2026
