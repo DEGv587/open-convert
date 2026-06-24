@@ -60,3 +60,4 @@ docs/
 # Temporary files
 tmp/
 temp/
+.wrangler/
