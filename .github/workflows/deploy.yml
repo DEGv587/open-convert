@@ -18,13 +18,15 @@ jobs:
     steps:
       - name: Check changed files
         id: changes
+        env:
+          COMMITS_JSON: ${{ toJson(github.event.commits) }}
         run: |
           # 获取本次提交修改的文件
           echo "Files changed in this push:"
-          echo "${{ toJson(github.event.commits) }}" | jq -r '.[].modified[], .[].added[], .[].removed[]' | sort | uniq
+          echo "$COMMITS_JSON" | jq -r '.[].modified[], .[].added[], .[].removed[]' | sort | uniq
 
           # 检测后端变更
-          if echo "${{ toJson(github.event.commits) }}" | jq -r '.[].modified[], .[].added[], .[].removed[]' | grep -q '^doc-convert/backend/'; then
+          if echo "$COMMITS_JSON" | jq -r '.[].modified[], .[].added[], .[].removed[]' | grep -q '^doc-convert/backend/'; then
             echo "backend=true" >> $GITHUB_OUTPUT
             echo "✅ 后端有变更"
           else
@@ -33,7 +35,7 @@ jobs:
           fi
 
           # 检测前端变更
-          if echo "${{ toJson(github.event.commits) }}" | jq -r '.[].modified[], .[].added[], .[].removed[]' | grep -q '^doc-convert/frontend/'; then
+          if echo "$COMMITS_JSON" | jq -r '.[].modified[], .[].added[], .[].removed[]' | grep -q '^doc-convert/frontend/'; then
             echo "frontend=true" >> $GITHUB_OUTPUT
             echo "✅ 前端有变更"
           else
