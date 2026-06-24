@@ -7,7 +7,7 @@
  * 3. 限制请求体大小（100MB Worker 免费层上限，应用层限 50MB）
  */
 
-const BACKEND = 'https://open-convert-api.onrender.com'
+const BACKEND = 'https://open-convert.onrender.com'
 const ALLOWED_ORIGIN = 'https://covert.ljhztq.com'
 
 const CORS_HEADERS = {
