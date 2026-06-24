@@ -63,8 +63,11 @@ jobs:
 
   # 前端部署到 Cloudflare Pages
   deploy-frontend:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.frontend == 'true'
+    needs: [detect-changes, deploy-backend]
+    # 只有在前端有变更时才部署，但必须等待后端部署完成（如果后端有变更）
+    if: |
+      needs.detect-changes.outputs.frontend == 'true' &&
+      (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
