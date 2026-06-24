@@ -13,21 +13,33 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.changes.outputs.backend }}
+      frontend: ${{ steps.changes.outputs.frontend }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 获取完整历史，确保能正确检测变更
+      - name: Check changed files
+        id: changes
+        run: |
+          # 获取本次提交修改的文件
+          echo "Files changed in this push:"
+          echo "${{ toJson(github.event.commits) }}" | jq -r '.[].modified[], .[].added[], .[].removed[]' | sort | uniq
 
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            backend:
-              - 'doc-convert/backend/**'
-            frontend:
-              - 'doc-convert/frontend/**'
+          # 检测后端变更
+          if echo "${{ toJson(github.event.commits) }}" | jq -r '.[].modified[], .[].added[], .[].removed[]' | grep -q '^doc-convert/backend/'; then
+            echo "backend=true" >> $GITHUB_OUTPUT
+            echo "✅ 后端有变更"
+          else
+            echo "backend=false" >> $GITHUB_OUTPUT
+            echo "❌ 后端无变更"
+          fi
+
+          # 检测前端变更
+          if echo "${{ toJson(github.event.commits) }}" | jq -r '.[].modified[], .[].added[], .[].removed[]' | grep -q '^doc-convert/frontend/'; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+            echo "✅ 前端有变更"
+          else
+            echo "frontend=false" >> $GITHUB_OUTPUT
+            echo "❌ 前端无变更"
+          fi
 
   # 后端部署到 Render
   deploy-backend:
