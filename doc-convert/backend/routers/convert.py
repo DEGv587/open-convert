@@ -254,10 +254,8 @@ async def convert(
 
 
 @router.post("/pdf-info")
-async def pdf_info(request: Request):
-    """获取 PDF 文件信息（页数等）"""
-    import fitz
-
+async def pdf_info(request: Request, background_tasks: BackgroundTasks):
+    """获取 PDF 文件信息（异步）"""
     form = await request.form()
     file = form.get("file")
 
@@ -267,29 +265,37 @@ async def pdf_info(request: Request):
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(400, "Only PDF files are supported")
 
-    # 读取文件到临时位置
     content = await file.read()
     job_id = str(uuid.uuid4())
     work_dir = temp_dir(job_id)
     temp_path = os.path.join(work_dir, "temp.pdf")
 
-    try:
-        with open(temp_path, "wb") as f:
-            f.write(content)
+    with open(temp_path, "wb") as f:
+        f.write(content)
 
-        # 打开 PDF 获取页数
+    create_job(job_id, file.filename, "pdf", "info", "pending")
+    background_tasks.add_task(analyze_pdf_task, job_id, temp_path, file.filename)
+
+    return {"job_id": job_id, "status": "pending"}
+
+
+def analyze_pdf_task(job_id: str, temp_path: str, filename: str):
+    """后台分析 PDF"""
+    import fitz
+    import json
+    try:
         doc = fitz.open(temp_path)
         total_pages = len(doc)
         doc.close()
 
-        return {
-            "total_pages": total_pages,
-            "filename": file.filename
-        }
+        result_json = json.dumps({"total_pages": total_pages, "filename": filename})
+        update_job(job_id, "done", stage=result_json)
+    except Exception as e:
+        update_job(job_id, "error", error=str(e))
     finally:
-        # 清理临时文件
         if os.path.exists(temp_path):
             os.remove(temp_path)
+        work_dir = os.path.dirname(temp_path)
         if os.path.exists(work_dir) and not os.listdir(work_dir):
             os.rmdir(work_dir)
 
@@ -305,7 +311,11 @@ async def status(job_id: str):
         "progress": job["progress"] or 0,
     }
     if job["stage"]:
-        resp["stage"] = job["stage"]
+        # 尝试解析 JSON（用于 pdf-info 任务）
+        try:
+            resp["result"] = json.loads(job["stage"])
+        except:
+            resp["stage"] = job["stage"]
     if job["status"] == "done":
         resp["filename"] = job["filename"]
     if job["status"] == "error":

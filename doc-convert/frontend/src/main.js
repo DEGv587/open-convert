@@ -1,7 +1,7 @@
 /**
  * 应用入口：协调各模块
  */
-import { warmup, submitConversion, pollStatus, downloadResult, getPdfInfo, deleteJob } from './converter.js'
+import { warmup, submitConversion, pollStatus, downloadResult, getPdfInfo, deleteJob, API_BASE } from './converter.js'
 import { initUploader } from './uploader.js'
 import { initMultiUploader, getFileList, getFileOrder, resetMulti, addFiles } from './multi-uploader.js'
 import {
@@ -34,30 +34,56 @@ initUploader(
       setProcessText('正在分析 PDF 文件...')
       setStageText('大文件可能需要 3-5 分钟，请耐心等待')
 
-      // 假进度条：5分钟内从 0% 到 90%
       let progress = 0
       const interval = setInterval(() => {
         progress += 1
         if (progress <= 90) {
           setProgress(progress)
         }
-      }, 3333) // 5分钟 = 300秒，90% 需要 300/90*1000 ≈ 3333ms
+      }, 3333)
 
-      const info = await getPdfInfo(file)
-      clearInterval(interval)
+      const jobId = await getPdfInfo(file)
 
-      if (info && info.total_pages) {
-        setPdfTotalPages(info.total_pages)
-        setProgress(100)
-        setStageText(`分析完成，共 ${info.total_pages} 页`)
-        setTimeout(() => {
-          renderConfig(file, (fmt) => { selectedFormat = fmt })
-          switchState('config')
-        }, 500)
-      } else {
-        renderConfig(file, (fmt) => { selectedFormat = fmt })
-        switchState('config')
+      if (!jobId) {
+        clearInterval(interval)
+        enterError('PDF 分析失败，请重新上传')
+        return
       }
+
+      // 轮询分析结果
+      const checkStatus = async () => {
+        try {
+          const res = await fetch(`${API_BASE}/status/${jobId}`)
+          if (!res.ok) {
+            clearInterval(interval)
+            enterError('PDF 分析失败，请重新上传')
+            return
+          }
+
+          const data = await res.json()
+
+          if (data.status === 'done' && data.result) {
+            clearInterval(interval)
+            setPdfTotalPages(data.result.total_pages)
+            setProgress(100)
+            setStageText(`分析完成，共 ${data.result.total_pages} 页`)
+            setTimeout(() => {
+              renderConfig(file, (fmt) => { selectedFormat = fmt })
+              switchState('config')
+            }, 500)
+          } else if (data.status === 'error') {
+            clearInterval(interval)
+            enterError('PDF 分析失败，请重新上传')
+          } else {
+            setTimeout(checkStatus, 2000)
+          }
+        } catch (e) {
+          clearInterval(interval)
+          enterError('PDF 分析失败，请重新上传')
+        }
+      }
+
+      checkStatus()
       return
     }
 

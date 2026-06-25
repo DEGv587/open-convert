@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || '/doc-convert/api'
+export const API_BASE = import.meta.env.VITE_API_BASE || '/doc-convert/api'
 
 /**
  * 提交转换任务（单文件或多文件）
@@ -134,22 +134,17 @@ export async function getPdfInfo(file) {
   fd.append('file', file)
 
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 300000) // 5分钟超时
-
     const response = await fetch(`${API_BASE}/pdf-info`, {
       method: 'POST',
-      body: fd,
-      signal: controller.signal
+      body: fd
     })
-
-    clearTimeout(timeout)
 
     if (!response.ok) {
       throw new Error('Failed to get PDF info')
     }
 
-    return await response.json()
+    const data = await response.json()
+    return data.job_id
   } catch (error) {
     console.error('Get PDF info failed:', error)
     return null
