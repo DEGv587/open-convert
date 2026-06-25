@@ -30,12 +30,35 @@ initUploader(
 
     // 如果是 PDF，获取页数
     if (file.name.toLowerCase().endsWith('.pdf')) {
-      console.log('正在分析 PDF（首次可能需要 3-5 分钟）...')
+      switchState('processing')
+      setProcessText('正在分析 PDF 文件...')
+      setStageText('首次访问可能需要 3-5 分钟，请耐心等待')
+
+      // 假进度条：5分钟内从 0% 到 90%
+      let progress = 0
+      const interval = setInterval(() => {
+        progress += 1
+        if (progress <= 90) {
+          setProgress(progress)
+        }
+      }, 3333) // 5分钟 = 300秒，90% 需要 300/90*1000 ≈ 3333ms
+
       const info = await getPdfInfo(file)
+      clearInterval(interval)
+
       if (info && info.total_pages) {
         setPdfTotalPages(info.total_pages)
-        console.log(`PDF 共 ${info.total_pages} 页`)
+        setProgress(100)
+        setStageText(`分析完成，共 ${info.total_pages} 页`)
+        setTimeout(() => {
+          renderConfig(file, (fmt) => { selectedFormat = fmt })
+          switchState('config')
+        }, 500)
+      } else {
+        renderConfig(file, (fmt) => { selectedFormat = fmt })
+        switchState('config')
       }
+      return
     }
 
     // 如果是图片，进入多图模式
