@@ -1,7 +1,7 @@
 /**
  * 应用入口：协调各模块
  */
-import { warmup, submitConversion, pollStatus, downloadResult, getPdfInfo } from './converter.js'
+import { warmup, submitConversion, pollStatus, downloadResult, getPdfInfo, deleteJob } from './converter.js'
 import { initUploader } from './uploader.js'
 import { initMultiUploader, getFileList, getFileOrder, resetMulti, addFiles } from './multi-uploader.js'
 import {
@@ -200,6 +200,8 @@ async function startMultiConversion(files, toFormat) {
 
 function reset() {
   stopPolling()
+  const jobId = getCurrentJobId()
+  if (jobId) deleteJob(jobId)
   selectedFile = null
   selectedFormat = null
   resetMulti()

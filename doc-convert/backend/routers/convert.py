@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import shutil
 import uuid
 from typing import Any, Optional, Callable
 
@@ -325,3 +326,25 @@ async def download(job_id: str):
         filename=job["filename"],
         media_type="application/octet-stream",
     )
+
+
+@router.delete("/jobs/{job_id}")
+async def delete_job(job_id: str):
+    """下载后立即删除任务文件"""
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(404, "Job not found")
+
+    # 删除任务文件夹
+    job_dir = os.path.join("/tmp/docconv", job_id)
+    if os.path.exists(job_dir):
+        shutil.rmtree(job_dir, ignore_errors=True)
+
+    # 从数据库删除
+    from jobs import _conn, _db_lock
+    conn = _conn()
+    with _db_lock:
+        conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+        conn.commit()
+
+    return {"status": "deleted"}

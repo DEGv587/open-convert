@@ -99,6 +99,20 @@ export function downloadResult(jobId) {
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
+
+  // 下载开始后延迟删除文件（给浏览器足够时间开始下载）
+  setTimeout(() => deleteJob(jobId), 30000)
+}
+
+/**
+ * 删除任务文件
+ */
+export async function deleteJob(jobId) {
+  try {
+    await fetch(`${API_BASE}/jobs/${jobId}`, { method: 'DELETE' })
+  } catch (e) {
+    console.error('Delete job failed:', e)
+  }
 }
 
 /**

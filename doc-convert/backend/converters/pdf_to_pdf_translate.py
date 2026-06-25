@@ -4,6 +4,7 @@ PDF 转 PDF（带翻译）- 图片叠加模式
 保留原始 PDF 格式，不会丢失排版
 """
 import os
+import gc
 from typing import Optional, Callable, List, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
@@ -227,9 +228,12 @@ def _process_pages_with_overlay(
         except Exception as e:
             print(f"[页 {page_num + 1}] 处理失败: {e}")
             return idx, img_bytes  # 返回原图
+        finally:
+            # 释放内存
+            gc.collect()
 
-    # 并行处理（控制并发数）
-    max_workers = min(4, page_count)
+    # 并行处理（512MB 内存限制，降低并发）
+    max_workers = min(2, page_count)
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(process_page, idx, page_num): idx
