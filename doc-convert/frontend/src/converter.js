@@ -120,10 +120,16 @@ export async function getPdfInfo(file) {
   fd.append('file', file)
 
   try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 300000) // 5分钟超时
+
     const response = await fetch(`${API_BASE}/pdf-info`, {
       method: 'POST',
-      body: fd
+      body: fd,
+      signal: controller.signal
     })
+
+    clearTimeout(timeout)
 
     if (!response.ok) {
       throw new Error('Failed to get PDF info')
