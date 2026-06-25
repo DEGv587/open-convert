@@ -32,7 +32,7 @@ initUploader(
     if (file.name.toLowerCase().endsWith('.pdf')) {
       switchState('processing')
       setProcessText('正在分析 PDF 文件...')
-      setStageText('首次访问可能需要 3-5 分钟，请耐心等待')
+      setStageText('大文件可能需要 3-5 分钟，请耐心等待')
 
       // 假进度条：5分钟内从 0% 到 90%
       let progress = 0
