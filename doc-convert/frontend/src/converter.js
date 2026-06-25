@@ -133,20 +133,29 @@ export async function getPdfInfo(file) {
   const fd = new FormData()
   fd.append('file', file)
 
-  try {
-    const response = await fetch(`${API_BASE}/pdf-info`, {
-      method: 'POST',
-      body: fd
-    })
+  for (let i = 0; i < 3; i++) {
+    try {
+      const response = await fetch(`${API_BASE}/pdf-info`, {
+        method: 'POST',
+        body: fd
+      })
 
-    if (!response.ok) {
-      throw new Error('Failed to get PDF info')
+      if (!response.ok) {
+        // 4xx/5xx 说明服务端已收到文件但处理失败，不重试
+        console.error(`Get PDF info failed with ${response.status}`)
+        return null
+      }
+
+      const data = await response.json()
+      return data.job_id
+    } catch (error) {
+      // 网络异常才重试
+      console.error(`Get PDF info failed (attempt ${i + 1}):`, error)
+      if (i < 2) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
     }
-
-    const data = await response.json()
-    return data.job_id
-  } catch (error) {
-    console.error('Get PDF info failed:', error)
-    return null
   }
+  return null
+}
 }

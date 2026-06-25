@@ -228,9 +228,6 @@ def _process_pages_with_overlay(
         except Exception as e:
             print(f"[页 {page_num + 1}] 处理失败: {e}")
             return idx, img_bytes  # 返回原图
-        finally:
-            # 释放内存
-            gc.collect()
 
     # 并行处理（512MB 内存限制，降低并发）
     max_workers = min(2, page_count)
@@ -248,6 +245,8 @@ def _process_pages_with_overlay(
                 pct = 10 + int(completed / page_count * 80)
                 progress_cb(pct, f"图片识别+叠加翻译 {completed}/{page_count} 页")
 
+    # 所有页处理完后统一回收内存
+    gc.collect()
     return processed_images
 
 

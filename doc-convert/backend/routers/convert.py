@@ -239,13 +239,8 @@ async def convert(
 
         ordered_paths = [saved[name] for name in order]
 
-        # 多文件模式需要先获取 converter
-        multi_converter = get_converter("image", to_fmt)
-        if multi_converter is None:
-            raise HTTPException(400, f"Unsupported conversion: image -> {to_fmt}")
-
         background_tasks.add_task(
-            _run_conversion, job_id, ordered_paths, "image", to_fmt, multi_converter,
+            _run_conversion, job_id, ordered_paths, "image", to_fmt, converter,
             None, None, None  # translate_to, start_page, end_page 不适用多文件
         )
         return {"job_id": job_id, "status": "pending", "from_format": "image", "to_format": to_fmt}
@@ -282,7 +277,6 @@ async def pdf_info(request: Request, background_tasks: BackgroundTasks):
 def analyze_pdf_task(job_id: str, temp_path: str, filename: str):
     """后台分析 PDF"""
     import fitz
-    import json
     try:
         doc = fitz.open(temp_path)
         total_pages = len(doc)
@@ -314,7 +308,7 @@ async def status(job_id: str):
         # 尝试解析 JSON（用于 pdf-info 任务）
         try:
             resp["result"] = json.loads(job["stage"])
-        except:
+        except json.JSONDecodeError:
             resp["stage"] = job["stage"]
     if job["status"] == "done":
         resp["filename"] = job["filename"]
@@ -339,22 +333,12 @@ async def download(job_id: str):
 
 
 @router.delete("/jobs/{job_id}")
-async def delete_job(job_id: str):
+async def delete_job_endpoint(job_id: str):
     """下载后立即删除任务文件"""
+    from jobs import delete_job
     job = get_job(job_id)
     if job is None:
         raise HTTPException(404, "Job not found")
 
-    # 删除任务文件夹
-    job_dir = os.path.join("/tmp/docconv", job_id)
-    if os.path.exists(job_dir):
-        shutil.rmtree(job_dir, ignore_errors=True)
-
-    # 从数据库删除
-    from jobs import _conn, _db_lock
-    conn = _conn()
-    with _db_lock:
-        conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
-        conn.commit()
-
+    delete_job(job_id)
     return {"status": "deleted"}

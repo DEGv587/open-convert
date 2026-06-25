@@ -51,14 +51,15 @@ initUploader(
       }
 
       // 轮询分析结果
+      const fail = () => {
+        clearInterval(interval)
+        enterError('PDF 分析失败，请重新上传')
+      }
+
       const checkStatus = async () => {
         try {
           const res = await fetch(`${API_BASE}/status/${jobId}`)
-          if (!res.ok) {
-            clearInterval(interval)
-            enterError('PDF 分析失败，请重新上传')
-            return
-          }
+          if (!res.ok) return fail()
 
           const data = await res.json()
 
@@ -72,14 +73,12 @@ initUploader(
               switchState('config')
             }, 500)
           } else if (data.status === 'error') {
-            clearInterval(interval)
-            enterError('PDF 分析失败，请重新上传')
+            fail()
           } else {
             setTimeout(checkStatus, 2000)
           }
         } catch (e) {
-          clearInterval(interval)
-          enterError('PDF 分析失败，请重新上传')
+          fail()
         }
       }
 

@@ -120,3 +120,16 @@ def cleanup_expired():
     with _db_lock:
         conn.execute("DELETE FROM jobs WHERE created_at < ?", (cutoff,))
         conn.commit()
+
+
+def delete_job(job_id: str):
+    """删除指定任务及其文件"""
+    # 删除文件目录
+    job_dir = os.path.join(TMP_BASE, job_id)
+    if os.path.isdir(job_dir):
+        shutil.rmtree(job_dir, ignore_errors=True)
+    # 删除数据库记录
+    conn = _conn()
+    with _db_lock:
+        conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+        conn.commit()
