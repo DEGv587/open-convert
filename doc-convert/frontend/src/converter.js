@@ -134,8 +134,7 @@ export async function getPdfInfo(file) {
   fd.append('file', file)
 
   try {
-    // 直接访问 Render，避免 Worker 30秒超时
-    const response = await fetch('https://open-convert.onrender.com/doc-convert/api/pdf-info', {
+    const response = await fetch(`${API_BASE}/pdf-info`, {
       method: 'POST',
       body: fd
     })

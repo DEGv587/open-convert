@@ -273,7 +273,7 @@ async def pdf_info(request: Request, background_tasks: BackgroundTasks):
     with open(temp_path, "wb") as f:
         f.write(content)
 
-    create_job(job_id, file.filename, "pdf", "info", "pending")
+    create_job(job_id)
     background_tasks.add_task(analyze_pdf_task, job_id, temp_path, file.filename)
 
     return {"job_id": job_id, "status": "pending"}
