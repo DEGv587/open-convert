@@ -17,7 +17,7 @@ from formats import normalize_format, is_conversion_supported, CONVERSION_MATRIX
 
 router = APIRouter()
 
-MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "50")) * 1024 * 1024
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "90")) * 1024 * 1024
 MAX_MULTI_FILES = int(os.getenv("MAX_MULTI_FILES", "50"))
 _semaphore = asyncio.Semaphore(5)
 

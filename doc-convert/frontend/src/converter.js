@@ -147,3 +147,32 @@ export async function getPdfPageCount(file) {
     return null
   }
 }
+
+/**
+ * 在浏览器本地裁剪 PDF，只保留指定页码范围，生成新的小文件
+ * @param {File} file - 原始 PDF
+ * @param {number} startPage - 起始页（从 1 开始）
+ * @param {number} endPage - 结束页（从 1 开始，含）
+ * @returns {Promise<File>} 裁剪后的新 PDF 文件
+ */
+export async function cropPdfPages(file, startPage, endPage) {
+  const { PDFDocument } = await import('pdf-lib')
+  const buffer = await file.arrayBuffer()
+  const srcDoc = await PDFDocument.load(buffer)
+  const totalPages = srcDoc.getPageCount()
+
+  // 收敛到合法范围（转 0 索引）
+  const start = Math.max(0, startPage - 1)
+  const end = Math.min(totalPages - 1, endPage - 1)
+  const indices = []
+  for (let i = start; i <= end; i++) indices.push(i)
+
+  const newDoc = await PDFDocument.create()
+  const copied = await newDoc.copyPages(srcDoc, indices)
+  copied.forEach((page) => newDoc.addPage(page))
+
+  const bytes = await newDoc.save()
+  // 文件名加裁剪后缀，保留 .pdf 扩展名
+  const baseName = file.name.replace(/\.pdf$/i, '')
+  return new File([bytes], `${baseName}_p${startPage}-${endPage}.pdf`, { type: 'application/pdf' })
+}

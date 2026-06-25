@@ -1,7 +1,7 @@
 /**
  * 应用入口：协调各模块
  */
-import { warmup, submitConversion, pollStatus, downloadResult, getPdfPageCount, deleteJob } from './converter.js'
+import { warmup, submitConversion, pollStatus, downloadResult, getPdfPageCount, cropPdfPages, deleteJob } from './converter.js'
 import { initUploader } from './uploader.js'
 import { initMultiUploader, getFileList, getFileOrder, resetMulti, addFiles } from './multi-uploader.js'
 import {
@@ -11,6 +11,9 @@ import {
   getSelectedTranslateLang, getPageRange, setPdfTotalPages,
 } from './ui.js'
 import { isImageFile } from './utils/file.js'
+
+// 裁剪后上传的大小上限（留 Worker 100MB 余量）
+const MAX_UPLOAD_SIZE = 90 * 1024 * 1024
 
 let selectedFile = null
 let selectedFormat = null
@@ -168,6 +171,27 @@ async function startSingleConversion(file, toFormat) {
   const translateTo = getSelectedTranslateLang()
   const pageRange = getPageRange()
   const label = translateTo ? '正在转换并翻译...' : '正在转换...'
+
+  // PDF 翻译且选了页码范围：本地裁剪，只上传需要的页，避免上传整个大文件
+  if (translateTo && pageRange && file.name.toLowerCase().endsWith('.pdf')) {
+    const [start, end] = pageRange.split('-').map(Number)
+    try {
+      enterProcessing('正在提取所选页面...')
+      const cropped = await cropPdfPages(file, start, end)
+      if (cropped.size > MAX_UPLOAD_SIZE) {
+        enterError(`所选页面过大（${Math.round(cropped.size / 1024 / 1024)}MB），请减少翻译页数`)
+        return
+      }
+      // 已裁剪为目标页，后端无需再按页码范围处理
+      await startConversion([cropped], toFormat, null, label, translateTo, null)
+      return
+    } catch (e) {
+      console.error('PDF 裁剪失败:', e)
+      enterError('提取页面失败，请重试')
+      return
+    }
+  }
+
   await startConversion([file], toFormat, null, label, translateTo, pageRange)
 }
 
