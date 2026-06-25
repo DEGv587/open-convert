@@ -30,13 +30,11 @@ initUploader(
 
     // 如果是 PDF，获取页数
     if (file.name.toLowerCase().endsWith('.pdf')) {
-      showMessage('正在分析 PDF（首次可能需要 3-5 分钟）...', 'info')
+      console.log('正在分析 PDF（首次可能需要 3-5 分钟）...')
       const info = await getPdfInfo(file)
       if (info && info.total_pages) {
         setPdfTotalPages(info.total_pages)
-        showMessage(`PDF 共 ${info.total_pages} 页`, 'success')
-      } else {
-        showMessage('无法获取 PDF 信息，但仍可继续', 'warning')
+        console.log(`PDF 共 ${info.total_pages} 页`)
       }
     }
 
