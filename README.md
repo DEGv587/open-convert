@@ -8,7 +8,7 @@
   用户浏览器                                                                                                                                    
       ↓                                                                                                                                         
   Cloudflare Pages（前端 SPA）                                                                                                                  
-  covert.ljhztq.com/doc-convert/                                                                                                                
+  convert.ljhztq.com/doc-convert/                                                                                                                
       ↓ /doc-convert/api/* 请求                                                                                                                 
   Cloudflare Worker（API 网关）                                                                                                                 
   - CORS 处理 / 反代 / 路由                                                                                                                     
