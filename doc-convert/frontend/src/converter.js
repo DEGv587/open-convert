@@ -1,3 +1,8 @@
+import * as pdfjsLib from 'pdfjs-dist'
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url'
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
+
 export const API_BASE = import.meta.env.VITE_API_BASE || '/doc-convert/api'
 
 /**
@@ -127,34 +132,18 @@ export async function warmup() {
 }
 
 /**
- * 获取 PDF 文件信息（页数等）
+ * 在浏览器本地获取 PDF 页数（无需上传）
+ * @returns {Promise<number|null>} 总页数，失败返回 null
  */
-export async function getPdfInfo(file) {
-  const fd = new FormData()
-  fd.append('file', file)
-
-  for (let i = 0; i < 3; i++) {
-    try {
-      const response = await fetch(`${API_BASE}/pdf-info`, {
-        method: 'POST',
-        body: fd
-      })
-
-      if (!response.ok) {
-        // 4xx/5xx 说明服务端已收到文件但处理失败，不重试
-        console.error(`Get PDF info failed with ${response.status}`)
-        return null
-      }
-
-      const data = await response.json()
-      return data.job_id
-    } catch (error) {
-      // 网络异常才重试
-      console.error(`Get PDF info failed (attempt ${i + 1}):`, error)
-      if (i < 2) {
-        await new Promise(resolve => setTimeout(resolve, 2000))
-      }
-    }
+export async function getPdfPageCount(file) {
+  try {
+    const buffer = await file.arrayBuffer()
+    const doc = await pdfjsLib.getDocument({ data: buffer }).promise
+    const numPages = doc.numPages
+    doc.destroy()
+    return numPages
+  } catch (error) {
+    console.error('解析 PDF 页数失败:', error)
+    return null
   }
-  return null
 }

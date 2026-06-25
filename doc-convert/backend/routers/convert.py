@@ -248,52 +248,6 @@ async def convert(
     raise HTTPException(400, "No file uploaded")
 
 
-@router.post("/pdf-info")
-async def pdf_info(request: Request, background_tasks: BackgroundTasks):
-    """获取 PDF 文件信息（异步）"""
-    form = await request.form()
-    file = form.get("file")
-
-    if not isinstance(file, UploadFile):
-        raise HTTPException(400, "No PDF file uploaded")
-
-    if not file.filename.lower().endswith('.pdf'):
-        raise HTTPException(400, "Only PDF files are supported")
-
-    content = await file.read()
-    job_id = str(uuid.uuid4())
-    work_dir = temp_dir(job_id)
-    temp_path = os.path.join(work_dir, "temp.pdf")
-
-    with open(temp_path, "wb") as f:
-        f.write(content)
-
-    create_job(job_id)
-    background_tasks.add_task(analyze_pdf_task, job_id, temp_path, file.filename)
-
-    return {"job_id": job_id, "status": "pending"}
-
-
-def analyze_pdf_task(job_id: str, temp_path: str, filename: str):
-    """后台分析 PDF"""
-    import fitz
-    try:
-        doc = fitz.open(temp_path)
-        total_pages = len(doc)
-        doc.close()
-
-        result_json = json.dumps({"total_pages": total_pages, "filename": filename})
-        update_job(job_id, "done", stage=result_json)
-    except Exception as e:
-        update_job(job_id, "error", error=str(e))
-    finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        work_dir = os.path.dirname(temp_path)
-        if os.path.exists(work_dir) and not os.listdir(work_dir):
-            os.rmdir(work_dir)
-
-
 @router.get("/status/{job_id}")
 async def status(job_id: str):
     job = get_job(job_id)
@@ -305,11 +259,7 @@ async def status(job_id: str):
         "progress": job["progress"] or 0,
     }
     if job["stage"]:
-        # 尝试解析 JSON（用于 pdf-info 任务）
-        try:
-            resp["result"] = json.loads(job["stage"])
-        except json.JSONDecodeError:
-            resp["stage"] = job["stage"]
+        resp["stage"] = job["stage"]
     if job["status"] == "done":
         resp["filename"] = job["filename"]
     if job["status"] == "error":

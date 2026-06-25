@@ -1,7 +1,7 @@
 /**
  * 应用入口：协调各模块
  */
-import { warmup, submitConversion, pollStatus, downloadResult, getPdfInfo, deleteJob, API_BASE } from './converter.js'
+import { warmup, submitConversion, pollStatus, downloadResult, getPdfPageCount, deleteJob } from './converter.js'
 import { initUploader } from './uploader.js'
 import { initMultiUploader, getFileList, getFileOrder, resetMulti, addFiles } from './multi-uploader.js'
 import {
@@ -28,61 +28,14 @@ initUploader(
     selectedFile = file
     selectedFormat = null
 
-    // 如果是 PDF，获取页数
+    // 如果是 PDF，本地解析页数（无需上传）
     if (file.name.toLowerCase().endsWith('.pdf')) {
-      switchState('processing')
-      setProcessText('正在分析 PDF 文件...')
-      setStageText('大文件可能需要 3-5 分钟，请耐心等待')
-
-      let progress = 0
-      const interval = setInterval(() => {
-        progress += 1
-        if (progress <= 90) {
-          setProgress(progress)
-        }
-      }, 3333)
-
-      const jobId = await getPdfInfo(file)
-
-      if (!jobId) {
-        clearInterval(interval)
-        enterError('PDF 分析失败，请重新上传')
-        return
+      const totalPages = await getPdfPageCount(file)
+      if (totalPages) {
+        setPdfTotalPages(totalPages)
       }
-
-      // 轮询分析结果
-      const fail = () => {
-        clearInterval(interval)
-        enterError('PDF 分析失败，请重新上传')
-      }
-
-      const checkStatus = async () => {
-        try {
-          const res = await fetch(`${API_BASE}/status/${jobId}`)
-          if (!res.ok) return fail()
-
-          const data = await res.json()
-
-          if (data.status === 'done' && data.result) {
-            clearInterval(interval)
-            setPdfTotalPages(data.result.total_pages)
-            setProgress(100)
-            setStageText(`分析完成，共 ${data.result.total_pages} 页`)
-            setTimeout(() => {
-              renderConfig(file, (fmt) => { selectedFormat = fmt })
-              switchState('config')
-            }, 500)
-          } else if (data.status === 'error') {
-            fail()
-          } else {
-            setTimeout(checkStatus, 2000)
-          }
-        } catch (e) {
-          fail()
-        }
-      }
-
-      checkStatus()
+      renderConfig(file, (fmt) => { selectedFormat = fmt })
+      switchState('config')
       return
     }
 
