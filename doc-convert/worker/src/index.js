@@ -8,7 +8,7 @@
  */
 
 const BACKEND = 'https://open-convert.onrender.com'
-const ALLOWED_ORIGIN = 'https://covert.ljhztq.com'
+const ALLOWED_ORIGIN = 'https://convert.ljhztq.com'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,

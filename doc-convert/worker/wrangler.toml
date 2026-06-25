@@ -3,5 +3,5 @@ main = "src/index.js"
 compatibility_date = "2024-01-01"
 
 [[routes]]
-pattern = "covert.ljhztq.com/doc-convert/api/*"
+pattern = "convert.ljhztq.com/doc-convert/api/*"
 zone_name = "ljhztq.com"
