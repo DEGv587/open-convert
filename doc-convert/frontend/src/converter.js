@@ -158,4 +158,3 @@ export async function getPdfInfo(file) {
   }
   return null
 }
-}
