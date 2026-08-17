@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 import re
 
 from docx import Document
@@ -67,9 +68,23 @@ def _add_text(paragraph, text: str, bold: bool = False) -> None:
     _append_text_run(paragraph, text[position:], bold)
 
 
-def _add_math(paragraph, latex: str) -> None:
+def _add_math(paragraph, latex: str, math_mode: str = "omml") -> None:
     try:
-        paragraph._p.append(parse_xml(to_omml(latex)))
+        if math_mode == "image":
+            # Imported lazily so normal editable Word conversion does not pay
+            # Matplotlib's startup and font-cache cost.
+            from converters.latex_to_image import render_latex_png
+
+            run = paragraph.add_run()
+            run.add_picture(BytesIO(render_latex_png(latex)))
+            # Inline drawings sit slightly high next to Chinese body text.
+            # Lowering by one point keeps the mathematical baseline aligned.
+            run_pr = run._element.get_or_add_rPr()
+            position = OxmlElement("w:position")
+            position.set(qn("w:val"), "-2")
+            run_pr.append(position)
+        else:
+            paragraph._p.append(parse_xml(to_omml(latex)))
     except Exception:
         # A malformed formula should remain visible and editable as source text.
         _add_text(paragraph, latex)
@@ -86,7 +101,7 @@ def _looks_like_implicit_math(candidate: str) -> bool:
     return bool(re.search(r"(?:\d+[A-Za-z]|[A-Za-z]\d+)", value))
 
 
-def _add_math_candidate(paragraph, candidate: str, bold: bool = False) -> None:
+def _add_math_candidate(paragraph, candidate: str, bold: bool = False, math_mode: str = "omml") -> None:
     parts = re.split(r"(?=(?<![A-Za-z0-9])[A-Da-d]\.\s*)", candidate)
     for part in parts:
         if not part:
@@ -97,19 +112,21 @@ def _add_math_candidate(paragraph, candidate: str, bold: bool = False) -> None:
             trailing = option.group(3)[len(option.group(3).rstrip(" ")):]
             _add_text(paragraph, option.group(1) + option.group(2), bold)
             if body:
-                _add_math(paragraph, body)
+                _add_math(paragraph, body, math_mode)
             _add_text(paragraph, trailing, bold)
         else:
-            _add_math(paragraph, part.strip())
+            _add_math(paragraph, part.strip(), math_mode)
 
 
-def _add_candidate_with_blanks(paragraph, candidate: str, bold: bool = False) -> None:
+def _add_candidate_with_blanks(
+    paragraph, candidate: str, bold: bool = False, math_mode: str = "omml"
+) -> None:
     position = 0
     for match in BLANK_LINE_RE.finditer(candidate):
         math_part = candidate[position:match.start()]
         if math_part:
             if _looks_like_implicit_math(math_part):
-                _add_math_candidate(paragraph, math_part, bold)
+                _add_math_candidate(paragraph, math_part, bold, math_mode)
             else:
                 _add_text(paragraph, math_part, bold)
         _add_text(paragraph, match.group(0), bold)
@@ -117,12 +134,12 @@ def _add_candidate_with_blanks(paragraph, candidate: str, bold: bool = False) ->
     remainder = candidate[position:]
     if remainder:
         if _looks_like_implicit_math(remainder):
-            _add_math_candidate(paragraph, remainder, bold)
+            _add_math_candidate(paragraph, remainder, bold, math_mode)
         else:
             _add_text(paragraph, remainder, bold)
 
 
-def _add_implicit_math(paragraph, text: str, bold: bool = False) -> None:
+def _add_implicit_math(paragraph, text: str, bold: bool = False, math_mode: str = "omml") -> None:
     position = 0
     for match in IMPLICIT_MATH_RE.finditer(text):
         candidate = match.group(0)
@@ -136,25 +153,31 @@ def _add_implicit_math(paragraph, text: str, bold: bool = False) -> None:
         leading = candidate[:len(candidate) - len(candidate.lstrip(" "))]
         trailing = candidate[len(candidate.rstrip(" ")):]
         _add_text(paragraph, leading, bold)
-        _add_candidate_with_blanks(paragraph, candidate.strip(), bold)
+        _add_candidate_with_blanks(paragraph, candidate.strip(), bold, math_mode)
         _add_text(paragraph, trailing, bold)
         position = match.end()
     _add_text(paragraph, text[position:], bold)
 
 
-def _add_rich(paragraph, text: str, bold: bool = False, detect_implicit: bool = True) -> None:
+def _add_rich(
+    paragraph,
+    text: str,
+    bold: bool = False,
+    detect_implicit: bool = True,
+    math_mode: str = "omml",
+) -> None:
     position = 0
     for match in INLINE_MATH_RE.finditer(text):
         plain = text[position:match.start()]
         if detect_implicit:
-            _add_implicit_math(paragraph, plain, bold)
+            _add_implicit_math(paragraph, plain, bold, math_mode)
         else:
             _add_text(paragraph, plain, bold)
-        _add_math(paragraph, match.group(1) or match.group(2))
+        _add_math(paragraph, match.group(1) or match.group(2), math_mode)
         position = match.end()
     plain = text[position:]
     if detect_implicit:
-        _add_implicit_math(paragraph, plain, bold)
+        _add_implicit_math(paragraph, plain, bold, math_mode)
     else:
         _add_text(paragraph, plain, bold)
 
@@ -250,9 +273,11 @@ def _add_heading(document, text: str) -> None:
     _set_fonts(run, bold=True)
 
 
-def convert(text: str, output_path: str, progress_cb=None):
+def convert(text: str, output_path: str, progress_cb=None, *, math_mode: str = "omml"):
     if not isinstance(text, str) or not text.strip():
         raise ValueError("粘贴的文本不能为空")
+    if math_mode not in {"omml", "image"}:
+        raise ValueError(f"不支持的公式渲染模式: {math_mode}")
     if progress_cb:
         progress_cb(10, "正在解析文本和数学公式...")
 
@@ -266,7 +291,7 @@ def convert(text: str, output_path: str, progress_cb=None):
     for kind, payload in blocks:
         if kind == "display":
             paragraph = _paragraph(document, align=WD_ALIGN_PARAGRAPH.CENTER, space_before=4, space_after=6)
-            _add_math(paragraph, payload)
+            _add_math(paragraph, payload, math_mode)
             continue
 
         line = payload.rstrip()
@@ -303,7 +328,7 @@ def convert(text: str, output_path: str, progress_cb=None):
             continue
         if ANSWER_ROW_RE.match(stripped):
             paragraph = _paragraph(document)
-            _add_rich(paragraph, stripped, detect_implicit=False)
+            _add_rich(paragraph, stripped, detect_implicit=False, math_mode=math_mode)
             in_item = False
             seen_content = True
             continue
@@ -311,16 +336,16 @@ def convert(text: str, output_path: str, progress_cb=None):
         if item:
             paragraph = _paragraph(document, indent=0.85, hanging=0.85)
             _add_text(paragraph, f"{item.group(1)}. ")
-            _add_rich(paragraph, item.group(2))
+            _add_rich(paragraph, item.group(2), math_mode=math_mode)
             in_item = True
             seen_content = True
             continue
         paragraph = _paragraph(document, indent=0.85 if in_item else 0, space_after=2 if in_item else 4)
-        _add_rich(paragraph, stripped)
+        _add_rich(paragraph, stripped, math_mode=math_mode)
         seen_content = True
 
     if progress_cb:
-        progress_cb(85, "正在生成 Word 文档...")
+        progress_cb(85, "正在生成 PDF 排版..." if math_mode == "image" else "正在生成 Word 文档...")
     document.save(output_path)
     if progress_cb:
-        progress_cb(100, "Word 文档已生成")
+        progress_cb(100, "PDF 排版已生成" if math_mode == "image" else "Word 文档已生成")

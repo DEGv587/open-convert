@@ -1,9 +1,11 @@
 import tempfile
 import unittest
 import zipfile
+from io import BytesIO
 from pathlib import Path
 
 from docx import Document
+from PIL import Image
 
 from converters.text_to_word import convert
 
@@ -90,6 +92,33 @@ class TextToWordTests(unittest.TestCase):
         self.assertIn("<m:oMathPara", xml)
         self.assertNotIn("dfrac", xml)
         self.assertNotIn("begin{align", xml)
+
+    def test_pdf_math_mode_embeds_formula_images_instead_of_omml(self):
+        source = (
+            "# 公式 PDF 测试\n\n"
+            "1. 计算 $x^2 + \\dfrac{1}{2} + \\sqrt{y}$\n\n"
+            "$$\\begin{align*}\n"
+            "\\text{原式}&=x^2+4x+4\\\\\n"
+            "&=\\boldsymbol{4x+13}\n"
+            "\\end{align*}$$"
+        )
+        output = self.work_dir / "formula-images.docx"
+
+        convert(source, str(output), math_mode="image")
+
+        with zipfile.ZipFile(output) as package:
+            xml = package.read("word/document.xml").decode("utf-8")
+            media = [name for name in package.namelist() if name.startswith("word/media/")]
+            image_bytes = [package.read(name) for name in media]
+        self.assertNotIn("<m:oMath", xml)
+        self.assertGreaterEqual(len(media), 2)
+        self.assertTrue(
+            all(Image.open(BytesIO(content)).convert("RGBA").getchannel("A").getbbox() for content in image_bytes)
+        )
+
+    def test_invalid_math_mode_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "不支持的公式渲染模式"):
+            convert("公式 $x^2$", str(self.work_dir / "invalid.docx"), math_mode="bad")
 
 
 if __name__ == "__main__":

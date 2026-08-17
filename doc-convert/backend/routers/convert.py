@@ -212,7 +212,7 @@ async def convert(
 
     to_fmt = to_format.lower().strip(".")
 
-    # 粘贴文本模式：文本先生成带 OMML 原生公式的 DOCX，再按目标格式输出。
+    # 粘贴文本模式：Word 使用原生公式；PDF 使用兼容 LibreOffice 的公式渲染。
     if text_content is not None:
         if file is not None or files:
             raise HTTPException(400, "text_content cannot be combined with file uploads")
