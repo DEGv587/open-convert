@@ -23,13 +23,46 @@
           </svg>
           <p class="main-text">拖拽文件至此处</p>
           <p class="sub-text">或点击选择文件</p>
-          <p class="hint-text">支持 PDF, Word, PPT, JPG, PNG, HEIC（单文件最大 300MB，图片合并 PDF 最多 500 张）</p>
+          <p class="hint-text">支持 PDF, Word, PPT, JPG, PNG, HEIC（单文件最大 300MB，图片批量转换最多 500 张）</p>
         </div>
       </div>
       <input type="file" id="file-input" accept=".pdf,.docx,.doc,.pptx,.ppt,.jpg,.jpeg,.png,.heic" multiple>
+      <button class="secondary-btn paste-text-btn" id="paste-text-btn" type="button">粘贴文本</button>
     </section>
 
-    <!-- 2. 多图上传区（Image → PDF 专用） -->
+    <!-- 2. 粘贴文本编辑区 -->
+    <section id="state-text-editor" class="state-section">
+      <div class="text-editor-header">
+        <span class="format-label">粘贴的文本</span>
+        <span class="hint-text">支持 Markdown 和 LaTeX 数学公式</span>
+      </div>
+      <textarea id="text-editor" class="text-editor" spellcheck="false" placeholder="在这里编辑文本，例如：$x^2 + y^2 = z^2$"></textarea>
+      <div class="text-editor-footer">
+        <button class="secondary-btn" id="text-editor-back-btn" type="button">返回上传</button>
+        <button class="main-btn text-next-btn" id="text-next-btn" type="button">下一步</button>
+      </div>
+    </section>
+
+    <!-- 3. 粘贴文本输出格式 -->
+    <section id="state-text-config" class="state-section">
+      <div class="text-config-summary">
+        <span class="format-label">文本已就绪</span>
+        <span id="text-char-count" class="hint-text"></span>
+      </div>
+      <div class="format-selector">
+        <span class="format-label">转换为</span>
+        <div class="format-group" id="text-format-options">
+          <button class="format-btn selected" data-fmt="docx" type="button">Word (DOCX)</button>
+          <button class="format-btn" data-fmt="pdf" type="button">PDF</button>
+        </div>
+      </div>
+      <div class="text-config-actions">
+        <button class="main-btn" id="text-convert-btn" type="button">开始转换</button>
+        <button class="secondary-btn" id="text-config-back-btn" type="button">返回编辑</button>
+      </div>
+    </section>
+
+    <!-- 4. 图片批量转换区 -->
     <section id="state-multi-upload" class="state-section">
       <div id="multi-drop-zone">
         <div class="upload-content small">
@@ -39,8 +72,9 @@
       <div id="thumbnail-list"></div>
       <div class="format-selector">
         <span class="format-label">转换为</span>
-        <div class="format-group">
+        <div class="format-group" id="multi-format-options">
           <button class="format-btn selected" data-fmt="pdf">PDF</button>
+          <button class="format-btn" data-fmt="docx" title="OCR 识别为可编辑文字">Word (DOCX)</button>
         </div>
       </div>
       <button class="main-btn" id="multi-convert-btn">
@@ -49,7 +83,7 @@
       <button class="secondary-btn" id="multi-reset-btn">重新选择</button>
     </section>
 
-    <!-- 3. 单文件选中 + 格式选择 -->
+    <!-- 5. 单文件选中 + 格式选择 -->
     <section id="state-config" class="state-section">
       <div class="file-info-card">
         <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -105,7 +139,7 @@
       </button>
     </section>
 
-    <!-- 4. 处理中 -->
+    <!-- 6. 处理中 -->
     <section id="state-processing" class="state-section">
       <p id="process-text" class="process-text">正在上传...</p>
       <div class="progress-container">
@@ -117,7 +151,7 @@
       <p id="stage-text" class="hint-text"></p>
     </section>
 
-    <!-- 5. 成功 -->
+    <!-- 7. 成功 -->
     <section id="state-success" class="state-section">
       <svg class="status-icon success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -130,7 +164,7 @@
       <button class="secondary-btn" id="success-reset-btn">转换新文件</button>
     </section>
 
-    <!-- 6. 失败 -->
+    <!-- 8. 失败 -->
     <section id="state-error" class="state-section">
       <svg class="status-icon error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />

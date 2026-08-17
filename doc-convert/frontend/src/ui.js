@@ -23,6 +23,7 @@ let FORMAT_LABELS = {
 // 当前状态
 let _state = 'upload' // upload | config | multi-upload | processing | success | error
 let _currentJobId = null
+let _currentFilename = null
 let _stopPolling = null
 let _currentFileExt = null  // 记录当前文件扩展名
 let _currentToFormat = null  // 记录当前选择的目标格式
@@ -32,7 +33,7 @@ const $ = id => document.getElementById(id)
 
 export async function initUI() {
   // 收集所有 section
-  for (const id of ['upload', 'multi-upload', 'config', 'processing', 'success', 'error']) {
+  for (const id of ['upload', 'text-editor', 'text-config', 'multi-upload', 'config', 'processing', 'success', 'error']) {
     sections[id] = document.getElementById(`state-${id}`)
   }
 
@@ -219,8 +220,9 @@ export function setStageText(text) {
   $('stage-text').textContent = text || ''
 }
 
-export function enterSuccess(jobId, warningMessage = null) {
+export function enterSuccess(jobId, warningMessage = null, filename = null) {
   _currentJobId = jobId
+  _currentFilename = filename
 
   // 显示或隐藏警告信息
   const warningEl = $('success-warning')
@@ -240,6 +242,7 @@ export function enterError(msg) {
 }
 
 export function getCurrentJobId() { return _currentJobId }
+export function getCurrentFilename() { return _currentFilename }
 
 export function setStopPolling(fn) { _stopPolling = fn }
 export function stopPolling() { _stopPolling && _stopPolling() }

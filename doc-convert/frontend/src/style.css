@@ -100,6 +100,66 @@ header p {
 
 #file-input { display: none; }
 
+.paste-text-btn {
+  margin-top: 14px;
+}
+
+/* Pasted text editor */
+.text-editor-header,
+.text-config-summary {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.text-editor {
+  width: 100%;
+  min-height: 300px;
+  resize: vertical;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-main);
+  background: #fff;
+  font: 15px/1.7 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  outline: none;
+}
+.text-editor:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+.text-editor-footer {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 14px;
+}
+.text-editor-footer .secondary-btn,
+.text-config-actions .secondary-btn {
+  margin-top: 0;
+}
+.text-editor-footer .secondary-btn {
+  flex: 0 0 auto;
+  min-width: 72px;
+  white-space: nowrap;
+}
+.text-next-btn {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 112px;
+}
+.text-config-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
 /* Multi upload */
 #multi-drop-zone {
   width: 100%;
@@ -333,6 +393,7 @@ body.touch-dragging {
   text-decoration: underline;
   cursor: pointer;
   font-size: 0.9rem;
+  white-space: nowrap;
 }
 
 .btn-row {
@@ -501,6 +562,18 @@ footer {
   .format-btn {
     min-height: 40px;
     padding: 8px 16px;
+  }
+
+  .text-editor {
+    min-height: 240px;
+    font-size: 14px;
+  }
+
+  .text-editor-header,
+  .text-config-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .main-btn {

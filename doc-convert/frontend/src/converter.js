@@ -58,6 +58,41 @@ export function submitConversion(files, toFormat, fileOrder, onUploadProgress, t
 }
 
 /**
+ * 提交粘贴文本转换任务。
+ * 文本以 UTF-8 multipart 字段传输，公式源文本不会经过浏览器编码转换。
+ */
+export function submitTextConversion(text, toFormat, onUploadProgress) {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData()
+    fd.append('to_format', toFormat)
+    fd.append('text_content', text)
+
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_BASE}/convert`)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onUploadProgress) {
+        onUploadProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    }
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText)
+        if (xhr.status >= 400) {
+          reject(new Error(data.detail || `HTTP ${xhr.status}`))
+        } else {
+          resolve(data)
+        }
+      } catch {
+        reject(new Error('服务器返回格式错误'))
+      }
+    }
+    xhr.onerror = () => reject(new Error('网络错误，请检查连接'))
+    xhr.ontimeout = () => reject(new Error('请求超时'))
+    xhr.send(fd)
+  })
+}
+
+/**
  * 轮询任务状态
  */
 export function pollStatus(jobId, { onProgress, onDone, onError }) {
@@ -93,20 +128,83 @@ export function pollStatus(jobId, { onProgress, onDone, onError }) {
   return () => { stopped = true; clearTimeout(timer) }
 }
 
+const SAVE_FILE_TYPES = {
+  docx: {
+    description: 'Word 文档',
+    accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] },
+  },
+  pdf: {
+    description: 'PDF 文档',
+    accept: { 'application/pdf': ['.pdf'] },
+  },
+  pptx: {
+    description: 'PowerPoint 文档',
+    accept: { 'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'] },
+  },
+  zip: {
+    description: 'ZIP 压缩文件',
+    accept: { 'application/zip': ['.zip'] },
+  },
+  png: { description: 'PNG 图片', accept: { 'image/png': ['.png'] } },
+  jpg: { description: 'JPEG 图片', accept: { 'image/jpeg': ['.jpg', '.jpeg'] } },
+}
+
+function getSavePickerOptions(filename) {
+  const safeName = filename || 'converted_file'
+  const ext = safeName.split('.').pop().toLowerCase()
+  const type = SAVE_FILE_TYPES[ext]
+  return {
+    suggestedName: safeName,
+    ...(type ? { types: [type] } : {}),
+  }
+}
+
+async function saveResponseToHandle(response, handle) {
+  const writable = await handle.createWritable()
+  if (response.body) {
+    await response.body.pipeTo(writable)
+    return
+  }
+  await writable.write(await response.blob())
+  await writable.close()
+}
+
 /**
- * 触发文件下载
+ * 下载转换结果。支持 File System Access API 时优先弹出系统保存位置选择框。
  */
-export function downloadResult(jobId) {
+export async function downloadResult(jobId, filename = null) {
   const url = `${API_BASE}/download/${jobId}`
+
+  if (typeof window.showSaveFilePicker === 'function') {
+    let handle
+    try {
+      handle = await window.showSaveFilePicker(getSavePickerOptions(filename))
+    } catch (error) {
+      if (error?.name === 'AbortError') return false
+      throw error
+    }
+
+    const response = await fetch(url)
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      throw new Error(data.detail || `下载失败（HTTP ${response.status}）`)
+    }
+    await saveResponseToHandle(response, handle)
+    await deleteJob(jobId)
+    return true
+  }
+
+  // Safari / Firefox 等尚未支持保存选择框的浏览器回退为普通下载。
   const a = document.createElement('a')
   a.href = url
-  a.download = ''
+  a.download = filename || ''
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
 
   // 下载开始后延迟删除文件（给浏览器足够时间开始下载）
   setTimeout(() => deleteJob(jobId), 30000)
+  return true
 }
 
 /**

@@ -1,14 +1,14 @@
 /**
  * 应用入口：协调各模块
  */
-import { warmup, submitConversion, pollStatus, downloadResult, getPdfPageCount, cropPdfPages, deleteJob } from './converter.js'
+import { warmup, submitConversion, submitTextConversion, pollStatus, downloadResult, getPdfPageCount, cropPdfPages, deleteJob } from './converter.js'
 import { initUploader } from './uploader.js'
 import { initMultiUploader, getFileList, getFileOrder, resetMulti, addFiles } from './multi-uploader.js'
 import {
   initUI, switchState, renderConfig, getCurrentState,
   enterProcessing, setProcessText, setProgress, setStageText,
   enterSuccess, enterError, getCurrentJobId, setStopPolling, stopPolling,
-  getSelectedTranslateLang, getPageRange, setPdfTotalPages,
+  getCurrentFilename, getSelectedTranslateLang, getPageRange, setPdfTotalPages,
 } from './ui.js'
 import { isImageFile } from './utils/file.js'
 
@@ -17,6 +17,9 @@ const MAX_UPLOAD_SIZE = 90 * 1024 * 1024
 
 let selectedFile = null
 let selectedFormat = null
+let selectedMultiFormat = 'pdf'
+let pastedText = ''
+let selectedTextFormat = 'docx'
 
 // 初始化
 ;(async () => {
@@ -72,6 +75,54 @@ initUploader(
 
 // --- 事件绑定 ---
 
+// 粘贴文本：读取剪贴板后进入可编辑文本区
+document.getElementById('paste-text-btn').addEventListener('click', async () => {
+  let clipboardText = ''
+  try {
+    if (!navigator.clipboard?.readText) throw new Error('Clipboard API unavailable')
+    clipboardText = await navigator.clipboard.readText()
+  } catch (error) {
+    console.warn('读取剪贴板失败:', error)
+    alert('浏览器未授权读取剪贴板，请在文本框中手动粘贴内容')
+  }
+  pastedText = clipboardText
+  document.getElementById('text-editor').value = clipboardText
+  switchState('text-editor')
+  document.getElementById('text-editor').focus()
+})
+
+document.getElementById('text-editor-back-btn').addEventListener('click', reset)
+
+document.getElementById('text-next-btn').addEventListener('click', () => {
+  const text = document.getElementById('text-editor').value
+  if (!text.trim()) {
+    alert('请先粘贴或输入文本')
+    return
+  }
+  pastedText = text
+  document.getElementById('text-char-count').textContent = `${text.length.toLocaleString()} 个字符`
+  switchState('text-config')
+})
+
+document.querySelectorAll('#text-format-options .format-btn').forEach((button) => {
+  button.addEventListener('click', () => {
+    document.querySelectorAll('#text-format-options .format-btn').forEach((item) => {
+      item.classList.toggle('selected', item === button)
+    })
+    selectedTextFormat = button.dataset.fmt
+  })
+})
+
+document.getElementById('text-config-back-btn').addEventListener('click', () => {
+  document.getElementById('text-editor').value = pastedText
+  switchState('text-editor')
+  document.getElementById('text-editor').focus()
+})
+
+document.getElementById('text-convert-btn').addEventListener('click', () => {
+  startTextConversion(pastedText, selectedTextFormat)
+})
+
 // 移除文件
 document.getElementById('remove-file-btn').addEventListener('click', reset)
 
@@ -88,7 +139,16 @@ document.getElementById('multi-convert-btn').addEventListener('click', () => {
     alert('请至少添加一张图片')
     return
   }
-  startMultiConversion(files, 'pdf')
+  startMultiConversion(files, selectedMultiFormat)
+})
+
+document.querySelectorAll('#multi-format-options .format-btn').forEach((button) => {
+  button.addEventListener('click', () => {
+    document.querySelectorAll('#multi-format-options .format-btn').forEach((item) => {
+      item.classList.toggle('selected', item === button)
+    })
+    selectedMultiFormat = button.dataset.fmt
+  })
 })
 
 document.getElementById('multi-reset-btn').addEventListener('click', () => {
@@ -97,9 +157,20 @@ document.getElementById('multi-reset-btn').addEventListener('click', () => {
 })
 
 // 下载
-document.getElementById('download-btn').addEventListener('click', () => {
+document.getElementById('download-btn').addEventListener('click', async () => {
   const jobId = getCurrentJobId()
-  if (jobId) downloadResult(jobId)
+  if (!jobId) return
+  const button = document.getElementById('download-btn')
+  button.disabled = true
+  button.textContent = '正在保存...'
+  try {
+    await downloadResult(jobId, getCurrentFilename())
+  } catch (error) {
+    alert(`保存失败：${error.message}`)
+  } finally {
+    button.disabled = false
+    button.textContent = '下载文件'
+  }
 })
 
 // 成功后重置
@@ -109,9 +180,11 @@ document.getElementById('success-reset-btn').addEventListener('click', reset)
 document.getElementById('retry-btn').addEventListener('click', () => {
   if (selectedFile && selectedFormat) {
     startSingleConversion(selectedFile, selectedFormat)
+  } else if (pastedText) {
+    startTextConversion(pastedText, selectedTextFormat)
   } else {
     const files = getFileList()
-    if (files.length) startMultiConversion(files, 'pdf')
+    if (files.length) startMultiConversion(files, selectedMultiFormat)
     else reset()
   }
 })
@@ -154,7 +227,38 @@ async function startConversion(files, toFormat, fileOrder = null, processingText
           warningMsg = '⚠️ ' + data.stage
         }
 
-        enterSuccess(job_id, warningMsg)
+        enterSuccess(job_id, warningMsg, data.filename)
+      },
+      onError: (err) => {
+        stop && stop()
+        enterError(err.message)
+      },
+    })
+    setStopPolling(stop)
+  } catch (err) {
+    enterError(err.message)
+  }
+}
+
+async function startTextConversion(text, toFormat) {
+  enterProcessing(toFormat === 'pdf' ? '正在生成 PDF...' : '正在生成 Word...')
+  try {
+    const { job_id } = await submitTextConversion(text, toFormat, (pct) => {
+      setProgress(Math.round(pct * 0.4))
+      setProcessText(`正在上传文本... ${Math.round(pct * 0.4)}%`)
+    })
+    setProcessText(toFormat === 'pdf' ? '正在生成 PDF...' : '正在生成 Word...')
+    setProgress(40)
+
+    const stop = pollStatus(job_id, {
+      onProgress: (data) => {
+        const total = 40 + Math.round((data.progress || 0) * 0.6)
+        setProgress(total)
+        setStageText(data.stage || '')
+      },
+      onDone: (data) => {
+        stop && stop()
+        enterSuccess(job_id, null, data.filename)
       },
       onError: (err) => {
         stop && stop()
@@ -197,7 +301,8 @@ async function startSingleConversion(file, toFormat) {
 
 async function startMultiConversion(files, toFormat) {
   const fileOrder = getFileOrder()
-  await startConversion(files, toFormat, fileOrder, '正在合并为 PDF...')
+  const label = toFormat === 'docx' ? '正在生成 Word 文档...' : '正在合并为 PDF...'
+  await startConversion(files, toFormat, fileOrder, label)
 }
 
 function reset() {
@@ -206,6 +311,17 @@ function reset() {
   if (jobId) deleteJob(jobId)
   selectedFile = null
   selectedFormat = null
+  selectedMultiFormat = 'pdf'
+  pastedText = ''
+  selectedTextFormat = 'docx'
+  document.getElementById('text-editor').value = ''
+  document.getElementById('text-char-count').textContent = ''
+  document.querySelectorAll('#text-format-options .format-btn').forEach((button) => {
+    button.classList.toggle('selected', button.dataset.fmt === 'docx')
+  })
+  document.querySelectorAll('#multi-format-options .format-btn').forEach((button) => {
+    button.classList.toggle('selected', button.dataset.fmt === 'pdf')
+  })
   resetMulti()
   switchState('upload')
 }

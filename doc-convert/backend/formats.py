@@ -26,6 +26,8 @@ FORMAT_LABELS = {
 
 # 转换矩阵：from_format -> [to_format, ...]
 CONVERSION_MATRIX = {
+    "text": ["docx", "pdf"],
+    "image": ["pdf", "docx"],
     "pdf": ["pdf", "docx", "pptx", "png", "jpg"],  # 添加 pdf 作为第一个选项
     "docx": ["pdf", "pptx", "png", "jpg"],
     "pptx": ["pdf", "docx", "png", "jpg"],

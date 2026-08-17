@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import shutil
 import uuid
 from typing import Any, Optional, Callable
@@ -18,8 +19,19 @@ from formats import normalize_format, is_conversion_supported, CONVERSION_MATRIX
 router = APIRouter()
 
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "90")) * 1024 * 1024
+MAX_TEXT_SIZE = int(os.getenv("MAX_TEXT_SIZE_MB", "10")) * 1024 * 1024
 MAX_MULTI_FILES = int(os.getenv("MAX_MULTI_FILES", "50"))
 _semaphore = asyncio.Semaphore(5)
+
+
+def _text_filename_base(text: str, max_chars: int = 16) -> str:
+    first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    first_line = re.sub(r"^#{1,6}\s*", "", first_line)
+    first_line = re.sub(r"^[>*-]+\s*", "", first_line)
+    first_line = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "", first_line)
+    first_line = re.sub(r"[$#{}]", "", first_line)
+    first_line = re.sub(r"\s+", "", first_line).strip(". ")
+    return first_line[:max_chars] or "粘贴文本"
 
 
 @router.get("/config")
@@ -27,6 +39,7 @@ async def get_config():
     """返回前端配置"""
     return {
         "max_file_size_mb": MAX_FILE_SIZE // (1024 * 1024),
+        "max_text_size_mb": MAX_TEXT_SIZE // (1024 * 1024),
         "max_multi_files": MAX_MULTI_FILES,
         "conversion_matrix": CONVERSION_MATRIX,
         "format_labels": FORMAT_LABELS,
@@ -126,6 +139,39 @@ async def _run_conversion(
             update_job(job_id, status="error", error=str(e))
 
 
+async def _run_text_conversion(
+    job_id: str,
+    text_content: str,
+    to_fmt: str,
+    converter: Callable,
+    output_path: str,
+):
+    if not _semaphore._value:
+        update_job(job_id, status="error", error="Server busy. Max 5 concurrent conversions.")
+        return
+
+    async with _semaphore:
+        update_job(job_id, status="processing", progress=0)
+        try:
+            def progress_cb(pct: int, stage: str = ""):
+                update_job(job_id, progress=pct, stage=stage)
+
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: converter(text_content, output_path, progress_cb),
+            )
+            update_job(
+                job_id,
+                status="done",
+                output_path=output_path,
+                filename=os.path.basename(output_path),
+                progress=100,
+            )
+        except Exception as exc:
+            update_job(job_id, status="error", error=str(exc))
+
+
 @router.post("/convert")
 async def convert(
     request: Request,
@@ -138,6 +184,7 @@ async def convert(
     to_format = str(form.get("to_format") or "").strip()
     translate_to = str(form.get("translate_to") or "").strip() or None  # 'zh' | 'en' | None
     translate_page_range = str(form.get("translate_page_range") or "").strip() or None  # "1-10" | None
+    text_content = form.get("text_content")
     file_order = form.get("file_order")
     file, files = _extract_uploads(form)
 
@@ -164,6 +211,30 @@ async def convert(
             raise HTTPException(400, "translate_page_range must be in format 'start-end' (e.g., '1-10')")
 
     to_fmt = to_format.lower().strip(".")
+
+    # 粘贴文本模式：文本先生成带 OMML 原生公式的 DOCX，再按目标格式输出。
+    if text_content is not None:
+        if file is not None or files:
+            raise HTTPException(400, "text_content cannot be combined with file uploads")
+        if translate_to or translate_page_range:
+            raise HTTPException(400, "Text conversion does not support translation or page ranges")
+        if not isinstance(text_content, str) or not text_content.strip():
+            raise HTTPException(400, "text_content cannot be empty")
+        if len(text_content.encode("utf-8")) > MAX_TEXT_SIZE:
+            raise HTTPException(400, f"Text is too large. Maximum size is {MAX_TEXT_SIZE // (1024 * 1024)}MB.")
+        if to_fmt not in ("docx", "pdf"):
+            raise HTTPException(400, "Pasted text can only be converted to DOCX or PDF")
+
+        converter = get_converter("text", to_fmt)
+        if converter is None:
+            raise HTTPException(400, f"Unsupported text conversion: text -> {to_fmt}")
+
+        job_id = str(uuid.uuid4())
+        create_job(job_id)
+        work_dir = temp_dir(job_id)
+        output_path = os.path.join(work_dir, f"{_text_filename_base(text_content)}.{to_fmt}")
+        background_tasks.add_task(_run_text_conversion, job_id, text_content, to_fmt, converter, output_path)
+        return {"job_id": job_id, "status": "pending", "from_format": "text", "to_format": to_fmt}
 
     # 单文件模式
     if file is not None and len(files) == 0:
@@ -196,7 +267,7 @@ async def convert(
         )
         return {"job_id": job_id, "status": "pending", "from_format": from_fmt, "to_format": to_fmt}
 
-    # 多文件模式（Image → PDF）
+    # 多文件模式（Image → PDF/Word）
     if len(files) > 0:
         if len(files) > MAX_MULTI_FILES:
             raise HTTPException(400, f"Too many files. Maximum is {MAX_MULTI_FILES} images per batch.")

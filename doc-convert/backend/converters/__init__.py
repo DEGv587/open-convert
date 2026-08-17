@@ -38,12 +38,15 @@ def get_converter(from_fmt: str, to_fmt: str, translate_to: Optional[str] = None
         ("pptx", "png"): _import("ppt_to_image", "convert_png"),
         ("pptx", "jpg"): _import("ppt_to_image", "convert_jpg"),
         ("image", "pdf"): _import("image_to_pdf", "convert"),
+        ("image", "docx"): _import("image_to_word", "convert"),
         ("jpg", "pdf"): _import("image_to_pdf", "convert_single"),
         ("png", "pdf"): _import("image_to_pdf", "convert_single"),
         ("heic", "pdf"): _import("image_to_pdf", "convert_single"),
         ("jpg", "docx"): _import("image_to_word", "convert"),
         ("png", "docx"): _import("image_to_word", "convert"),
         ("heic", "docx"): _import("image_to_word", "convert"),
+        ("text", "docx"): _import("text_to_word", "convert"),
+        ("text", "pdf"): _import("text_to_pdf", "convert"),
     }
     return mapping.get((from_fmt, to_fmt))
 
