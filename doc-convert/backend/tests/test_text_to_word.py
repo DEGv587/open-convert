@@ -120,6 +120,25 @@ class TextToWordTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "不支持的公式渲染模式"):
             convert("公式 $x^2$", str(self.work_dir / "invalid.docx"), math_mode="bad")
 
+    def test_unicode_minus_does_not_split_unwrapped_bold_formula(self):
+        output = self.work_dir / "unicode-minus.docx"
+
+        convert(
+            "19. x^2 − 5x+2x − 10=\\boldsymbol{x^2 − 3x − 10}\n"
+            "20. \\boldsymbol{4a^2 − 9b^2}",
+            str(output),
+            math_mode="image",
+        )
+
+        with zipfile.ZipFile(output) as package:
+            xml = package.read("word/document.xml").decode("utf-8")
+            media = [name for name in package.namelist() if name.startswith("word/media/")]
+        # Each answer line stays as one complete image formula.  Previously
+        # U+2212 split the command into unmatched fragments and showed
+        # ``\boldsymbol{`` in the generated PDF.
+        self.assertEqual(xml.count("<w:drawing>"), 2)
+        self.assertEqual(len(media), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

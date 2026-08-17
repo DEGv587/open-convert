@@ -25,7 +25,9 @@ SECTION_HEADING_RE = re.compile(r"^[一二三四五六七八九十]+[、.．]\s*
 TITLE_HINT_RE = re.compile(r"(?:试卷|测试题?|练习题?|考试|答案|报告|文档|方案|通知|总结)$")
 BARE_DISPLAY_START_RE = re.compile(r"^\\begin\{(?:align\*?|aligned|gather\*?)\}")
 BARE_DISPLAY_END_RE = re.compile(r"\\end\{(?:align\*?|aligned|gather\*?)\}\s*$")
-IMPLICIT_MATH_RE = re.compile(r"[A-Za-z0-9\\{}^_()\[\]+*/=<>.,:;!|\- ]+")
+IMPLICIT_MATH_RE = re.compile(
+    r"[A-Za-z0-9\\{}^_()\[\]+*/=<>.,:;!|%&\-\s‐‑–—−×÷·≤≥≠≈]+"
+)
 OPTION_PREFIX_RE = re.compile(r"(?<![A-Za-z0-9])([A-Da-d])\.\s*")
 MATH_COMMAND_RE = re.compile(
     r"\\(?:d?frac|tfrac|sqrt|boldsymbol|mathbf|bf|mathrm|text|operatorname|"
@@ -91,7 +93,10 @@ def _add_math(paragraph, latex: str, math_mode: str = "omml") -> None:
 
 
 def _looks_like_implicit_math(candidate: str) -> bool:
-    value = candidate.strip()
+    # Normalize typography copied from browsers/PDFs before detection.  In
+    # particular, U+2212 (−) must remain inside a LaTeX command's braces; if it
+    # splits ``\boldsymbol{...}``, the unmatched half is emitted as raw source.
+    value = normalize(candidate).strip()
     if not value:
         return False
     if MATH_COMMAND_RE.search(value) or "^" in value or "_" in value:
