@@ -1,0 +1,5 @@
+# Cloudflare Pages configuration for the static frontend.
+# Deploy from doc-convert/frontend with: npx wrangler pages deploy dist --project-name=open-convert
+name = "open-convert"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-01-01"

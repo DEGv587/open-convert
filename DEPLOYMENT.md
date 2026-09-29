@@ -81,6 +81,8 @@ curl https://your-service-name.onrender.com/doc-convert/api/health
 
 6. 点击 **Save and Deploy**
 
+这是 Cloudflare Pages 项目，部署命令必须使用 `wrangler pages deploy`，不要使用 Worker 的 `wrangler deploy`。仓库已在 `doc-convert/frontend/wrangler.toml` 中声明 Pages 输出目录；若使用控制台自动构建，请将 Root directory 设置为 `doc-convert/frontend`、Build command 设置为 `npm run build`，Deploy command 留空。
+
 ### 3. 配置自定义域名（可选）
 
 1. 在 Cloudflare Pages 项目设置中，进入 **Custom domains**
