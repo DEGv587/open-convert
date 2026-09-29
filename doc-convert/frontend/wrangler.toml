@@ -3,3 +3,8 @@
 name = "open-convert"
 pages_build_output_dir = "dist"
 compatibility_date = "2024-01-01"
+
+# Compatibility for Cloudflare's Worker-style `wrangler deploy` command.
+# The Pages deployment in CI still uses `wrangler pages deploy`.
+[assets]
+directory = "./dist"
