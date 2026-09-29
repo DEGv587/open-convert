@@ -5,9 +5,10 @@ import re
 import shutil
 import uuid
 from typing import Any, Optional, Callable
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from starlette.datastructures import FormData, UploadFile
 
 import jobs
@@ -22,6 +23,7 @@ MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_MB", "90")) * 1024 * 1024
 MAX_TEXT_SIZE = int(os.getenv("MAX_TEXT_SIZE_MB", "10")) * 1024 * 1024
 MAX_MULTI_FILES = int(os.getenv("MAX_MULTI_FILES", "50"))
 _semaphore = asyncio.Semaphore(5)
+_DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 def _text_filename_base(text: str, max_chars: int = 16) -> str:
@@ -48,6 +50,58 @@ async def get_config():
 
 def _get_ext(filename: str) -> str:
     return os.path.splitext(filename)[1].lstrip(".").lower()
+
+
+def _parse_byte_range(range_header: str, file_size: int) -> tuple[int, int]:
+    """解析单个 HTTP byte range，返回包含首尾位置的元组。"""
+    if not range_header.lower().startswith("bytes="):
+        raise ValueError("Only bytes ranges are supported")
+
+    value = range_header[6:].strip()
+    if not value or "," in value:
+        raise ValueError("Only one byte range is supported")
+
+    start_text, separator, end_text = value.partition("-")
+    if not separator:
+        raise ValueError("Invalid byte range")
+
+    try:
+        if not start_text:
+            suffix_length = int(end_text)
+            if suffix_length <= 0:
+                raise ValueError("Invalid byte range")
+            start = max(file_size - suffix_length, 0)
+            end = file_size - 1
+        else:
+            start = int(start_text)
+            end = int(end_text) if end_text else file_size - 1
+            if start < 0 or end < start or start >= file_size:
+                raise ValueError("Invalid byte range")
+            end = min(end, file_size - 1)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid byte range") from exc
+
+    if file_size <= 0 or start > end:
+        raise ValueError("Invalid byte range")
+    return start, end
+
+
+def _iter_file_range(path: str, start: int, end: int):
+    with open(path, "rb") as file_obj:
+        file_obj.seek(start)
+        remaining = end - start + 1
+        while remaining:
+            chunk = file_obj.read(min(_DOWNLOAD_CHUNK_SIZE, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+            yield chunk
+
+
+def _content_disposition(filename: str) -> str:
+    safe_name = os.path.basename(filename or "converted_file")
+    ascii_name = re.sub(r'[^A-Za-z0-9._-]', "_", safe_name) or "converted_file"
+    return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(safe_name)}'
 
 
 def _as_upload(value: Any) -> Optional[UploadFile]:
@@ -339,18 +393,44 @@ async def status(job_id: str):
 
 
 @router.get("/download/{job_id}")
-async def download(job_id: str):
+async def download(job_id: str, request: Request):
     job = get_job(job_id)
     if job is None or job["status"] != "done":
         raise HTTPException(404, "Job not found or not completed")
     output_path = job["output_path"]
     if not output_path or not os.path.exists(output_path):
         raise HTTPException(404, "Output file no longer exists")
-    return FileResponse(
+    file_size = os.path.getsize(output_path)
+    range_header = request.headers.get("range")
+    if range_header:
+        try:
+            start, end = _parse_byte_range(range_header, file_size)
+        except ValueError as exc:
+            raise HTTPException(
+                416,
+                "Requested byte range is not satisfiable",
+                headers={"Content-Range": f"bytes */{file_size}"},
+            ) from exc
+
+        return StreamingResponse(
+            _iter_file_range(output_path, start, end),
+            status_code=206,
+            media_type="application/octet-stream",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Content-Length": str(end - start + 1),
+                "Content-Disposition": _content_disposition(job["filename"]),
+            },
+        )
+
+    response = FileResponse(
         output_path,
         filename=job["filename"],
         media_type="application/octet-stream",
     )
+    response.headers["Accept-Ranges"] = "bytes"
+    return response
 
 
 @router.delete("/jobs/{job_id}")

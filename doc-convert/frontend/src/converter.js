@@ -149,6 +149,9 @@ const SAVE_FILE_TYPES = {
   jpg: { description: 'JPEG 图片', accept: { 'image/jpeg': ['.jpg', '.jpeg'] } },
 }
 
+const DOWNLOAD_CHUNK_SIZE = 8 * 1024 * 1024
+const DOWNLOAD_MAX_RETRIES = 3
+
 function getSavePickerOptions(filename) {
   const safeName = filename || 'converted_file'
   const ext = safeName.split('.').pop().toLowerCase()
@@ -159,14 +162,93 @@ function getSavePickerOptions(filename) {
   }
 }
 
-async function saveResponseToHandle(response, handle) {
-  const writable = await handle.createWritable()
-  if (response.body) {
-    await response.body.pipeTo(writable)
-    return
+function parseContentRange(value) {
+  const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(value || '')
+  if (!match) return null
+  return { start: Number(match[1]), end: Number(match[2]), total: Number(match[3]) }
+}
+
+async function fetchDownloadRange(url, start, end) {
+  let lastError
+  for (let attempt = 0; attempt < DOWNLOAD_MAX_RETRIES; attempt += 1) {
+    try {
+      const response = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } })
+      if (response.status === 206 || (response.status === 200 && start === 0)) return response
+      const data = await response.json().catch(() => ({}))
+      const error = new Error(data.detail || `下载失败（HTTP ${response.status}）`)
+      if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+        error.nonRetryable = true
+      }
+      lastError = error
+    } catch (error) {
+      lastError = error
+    }
+    if (lastError?.nonRetryable) throw lastError
+    if (attempt + 1 < DOWNLOAD_MAX_RETRIES) {
+      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)))
+    }
   }
-  await writable.write(await response.blob())
-  await writable.close()
+  throw lastError || new Error('下载失败')
+}
+
+async function saveLargeResponseToHandle(url, handle) {
+  const writable = await handle.createWritable()
+  try {
+    let offset = 0
+    let total = null
+    while (total === null || offset < total) {
+      const end = total === null ? DOWNLOAD_CHUNK_SIZE - 1 : Math.min(total - 1, offset + DOWNLOAD_CHUNK_SIZE - 1)
+      const response = await fetchDownloadRange(url, offset, end)
+
+      if (response.status === 200) {
+        if (response.body) await response.body.pipeTo(writable)
+        else await writable.write(await response.blob())
+        return
+      }
+
+      const contentRange = parseContentRange(response.headers.get('Content-Range'))
+      if (!contentRange || contentRange.start !== offset || contentRange.end < contentRange.start) {
+        throw new Error('服务器返回了无效的分段下载响应')
+      }
+      total = contentRange.total
+      const data = new Uint8Array(await response.arrayBuffer())
+      const expectedLength = contentRange.end - contentRange.start + 1
+      if (data.byteLength !== expectedLength) throw new Error('分段下载内容不完整，请重试')
+      await writable.write(data)
+      offset = contentRange.end + 1
+    }
+    await writable.close()
+  } catch (error) {
+    try { await writable.abort?.() } catch { /* preserve the original download error */ }
+    throw error
+  }
+}
+
+async function fetchLargeDownloadBlob(url) {
+  const parts = []
+  let offset = 0
+  let total = null
+  let contentType = 'application/octet-stream'
+
+  while (total === null || offset < total) {
+    const end = total === null ? DOWNLOAD_CHUNK_SIZE - 1 : Math.min(total - 1, offset + DOWNLOAD_CHUNK_SIZE - 1)
+    const response = await fetchDownloadRange(url, offset, end)
+    contentType = response.headers.get('Content-Type') || contentType
+    if (response.status === 200) return response.blob()
+
+    const contentRange = parseContentRange(response.headers.get('Content-Range'))
+    if (!contentRange || contentRange.start !== offset || contentRange.end < contentRange.start) {
+      throw new Error('服务器返回了无效的分段下载响应')
+    }
+    total = contentRange.total
+    const data = await response.arrayBuffer()
+    const expectedLength = contentRange.end - contentRange.start + 1
+    if (data.byteLength !== expectedLength) throw new Error('分段下载内容不完整，请重试')
+    parts.push(data)
+    offset = contentRange.end + 1
+  }
+
+  return new Blob(parts, { type: contentType })
 }
 
 /**
@@ -184,26 +266,26 @@ export async function downloadResult(jobId, filename = null) {
       throw error
     }
 
-    const response = await fetch(url)
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}))
-      throw new Error(data.detail || `下载失败（HTTP ${response.status}）`)
-    }
-    await saveResponseToHandle(response, handle)
+    await saveLargeResponseToHandle(url, handle)
     await deleteJob(jobId)
     return true
   }
 
-  // Safari / Firefox 等尚未支持保存选择框的浏览器回退为普通下载。
+  // Safari / Firefox 等尚未支持保存选择框的浏览器回退为分段下载。
+  const blob = await fetchLargeDownloadBlob(url)
+  const objectUrl = URL.createObjectURL(blob)
   const a = document.createElement('a')
-  a.href = url
+  a.href = objectUrl
   a.download = filename || ''
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
 
-  // 下载开始后延迟删除文件（给浏览器足够时间开始下载）
-  setTimeout(() => deleteJob(jobId), 30000)
+  // 给浏览器足够时间读取 Blob，再释放内存并删除服务端文件。
+  setTimeout(() => {
+    URL.revokeObjectURL(objectUrl)
+    deleteJob(jobId)
+  }, 30000)
   return true
 }
 
